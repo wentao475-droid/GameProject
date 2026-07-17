@@ -1,0 +1,72 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+  padding: 20px 16px max(20px, env(safe-area-inset-bottom));
+  background: rgba(7, 4, 13, 0.58);
+  backdrop-filter: blur(12px);
+}
+
+.modal {
+  width: min(100%, 440px);
+  padding: 26px 22px;
+  background:
+    radial-gradient(circle at top, rgba(255, 223, 132, 0.16), transparent 40%),
+    rgba(17, 10, 34, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 28px 28px 22px 22px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.badge {
+  margin: 0 0 12px;
+  color: #fff2af;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0 0 12px;
+  font-size: clamp(1.6rem, 3vw, 2.25rem);
+}
+
+.summary {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.cleanupNote {
+  margin: 0 0 20px;
+  color: #fff7c7;
+  line-height: 1.7;
+}
+
+.modal button {
+  padding: 12px 18px;
+  color: #241330;
+  background: linear-gradient(135deg, #fff5d0 0%, #ffd17c 100%);
+  border: 0;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.modal button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (min-width: 768px) {
+  .overlay {
+    place-items: center;
+    padding: 20px;
+  }
+
+  .modal {
+    border-radius: 28px;
+  }
+}
