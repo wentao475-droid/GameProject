@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GAME_CONFIG } from "@/features/star-pop/config/gameConfig";
 import { getGameMode } from "@/features/star-pop/lib/gameModes";
 import { calculateScore } from "@/features/star-pop/lib/calculateScore";
 import { HomeScreen } from "@/features/star-pop/components/HomeScreen";
 import { GameBoard } from "@/features/star-pop/components/GameBoard";
+import { ObjectiveSheet } from "@/features/star-pop/components/ObjectiveSheet";
 import { ResultScreen } from "@/features/star-pop/components/ResultScreen";
 import { RestartButton } from "@/features/star-pop/components/RestartButton";
 import { ScoreBoard } from "@/features/star-pop/components/ScoreBoard";
@@ -16,6 +17,9 @@ import { useStarPopApp } from "@/features/star-pop/hooks/useStarPopApp";
 import styles from "@/features/star-pop/components/GameShell.module.css";
 
 export function GameShell() {
+  const [isObjectiveOpen, setIsObjectiveOpen] = useState(false);
+  const openObjective = useCallback(() => setIsObjectiveOpen(true), []);
+  const closeObjective = useCallback(() => setIsObjectiveOpen(false), []);
   const {
     screen,
     isSettingsOpen,
@@ -51,17 +55,24 @@ export function GameShell() {
     });
   }, [themeVariables]);
 
+  useEffect(() => {
+    if (screen !== "playing") {
+      setIsObjectiveOpen(false);
+    }
+  }, [screen]);
+
   if (!profile) {
     return <main className={styles.page} style={themeVariables} />;
   }
 
   const playingMode = getGameMode(game.modeId);
-  const objectiveText =
-    game.movesLeft !== null
-      ? `还剩 ${game.movesLeft} 步，尽量做大连消`
-      : game.modeId === "clear"
-        ? "清盘模式：残局越少越好"
-        : "经典模式：自由爆破冲高分";
+  const modeHint = game.dailyChallenge
+    ? `每日挑战：${game.dailyChallenge.goal.label}`
+    : playingMode.id === "clear"
+      ? "没有可用步时进入结算，剩余越少，残局奖励越高。"
+      : playingMode.id === "moves"
+        ? "用完 20 步或没有可用步时进入结算。"
+        : "没有可用步时会自动清盘后进入结算。";
   const boardCaption = game.isAutoClearing
     ? "残局自动清盘中"
     : game.previewCount === 1
@@ -70,7 +81,11 @@ export function GameShell() {
         ? `可消除 ${game.previewCount} 块 · 预计 +${calculateScore(game.previewCount)} 分`
         : "点击棋盘中的相邻同色块";
   return (
-    <main className={styles.page} data-theme={profile.currentThemeId} style={themeVariables}>
+    <main
+      className={`${styles.page} ${screen === "playing" ? styles.pagePlaying : ""}`}
+      data-theme={profile.currentThemeId}
+      style={themeVariables}
+    >
       {screen === "home" ? (
         <section className={`${styles.screenStage} ${styles.screenHome}`}>
           <HomeScreen
@@ -93,7 +108,6 @@ export function GameShell() {
             <div className={styles.heroCopy}>
               <p className={styles.eyebrow}>Star Pop MVP</p>
               <h1 className={styles.title}>{playingMode.name}</h1>
-              <p className={styles.modeLine}>{playingMode.objective}</p>
             </div>
 
             <div className={styles.hud}>
@@ -102,7 +116,7 @@ export function GameShell() {
                 score={game.score}
                 remainingBlocks={game.remainingBlocks}
                 movesLeft={game.movesLeft}
-                objectiveText={objectiveText}
+                idleHint="至少连接 2 块"
                 previewCount={game.previewCount}
                 turnFeedback={game.turnFeedback}
               />
@@ -128,24 +142,11 @@ export function GameShell() {
           <section className={styles.bottomDock}>
             <div className={styles.actionRow}>
               <RestartButton onRestart={replayGame} />
-              <RestartButton onRestart={goHome} label="返回首页" />
+              <RestartButton onRestart={goHome} label="首页" />
+              <button type="button" onClick={openObjective}>
+                目标
+              </button>
               <RestartButton onRestart={openSettings} label="设置" />
-            </div>
-
-            <div className={styles.panelCard}>
-              <h2 className={styles.panelTitle}>本局目标</h2>
-              <ul className={styles.tipList}>
-                <li>当前模式：{playingMode.name}</li>
-                <li>模式最高分：{profile.bestScoreByMode[playingMode.id]}</li>
-                <li>相邻至少 2 块才能消除。</li>
-                <li>
-                  {game.dailyChallenge
-                    ? `每日挑战：${game.dailyChallenge.goal.label}`
-                    : playingMode.id === "clear"
-                      ? "结束时剩余越少，残局奖励越高。"
-                      : "没有可用步时会自动清盘后进入结算。"}
-                </li>
-              </ul>
             </div>
           </section>
         </section>
@@ -175,6 +176,15 @@ export function GameShell() {
         onClose={closeSettings}
         onChange={updateSettings}
         onReset={handleResetProfile}
+      />
+      <ObjectiveSheet
+        isOpen={screen === "playing" && isObjectiveOpen}
+        modeName={playingMode.name}
+        objective={playingMode.objective}
+        bestScore={profile.bestScoreByMode[playingMode.id]}
+        dailyChallengeGoal={game.dailyChallenge?.goal.label ?? null}
+        modeHint={modeHint}
+        onClose={closeObjective}
       />
     </main>
   );

@@ -8,7 +8,7 @@ type ScoreBoardProps = {
   score: number;
   remainingBlocks: number;
   movesLeft: number | null;
-  objectiveText: string;
+  idleHint: string;
   previewCount: number;
   turnFeedback: {
     kind: "invalid" | "valid" | "auto-clear";
@@ -27,7 +27,7 @@ export function ScoreBoard({
   score,
   remainingBlocks,
   movesLeft,
-  objectiveText,
+  idleHint,
   previewCount,
   turnFeedback,
 }: ScoreBoardProps) {
@@ -86,7 +86,7 @@ export function ScoreBoard({
       ? "单个星块不可消除"
       : previewCount >= GAME_CONFIG.minGroupSize
         ? `可连消 ${previewCount} · 预计 +${calculateScore(previewCount)}`
-        : objectiveText;
+        : idleHint;
 
   return (
     <section className={styles.scoreBoard} aria-label="游戏信息">
