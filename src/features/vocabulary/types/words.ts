@@ -43,11 +43,12 @@ export type VocabularySettingsPatch = {
   quizEnabled?: boolean;
 };
 
-export type VocabularyCardDecision = "known" | "uncertain";
-
-export type VocabularySessionCardResult = {
+export type VocabularyTargetResult = {
   wordId: string;
-  decision: VocabularyCardDecision;
+  collectedCount: number;
+  targetCount: number;
+  hit: boolean;
+  completed: boolean;
   wasNew: boolean;
   wasReview: boolean;
   previousStage: VocabularyStage;
@@ -57,8 +58,11 @@ export type VocabularySessionCardResult = {
 export type VocabularySessionResult = {
   dateKey: string;
   packId: string;
-  introducedWordIds: string[];
-  reinforcedWordIds: string[];
+  score: number;
+  removedBlockCount: number;
+  targetResults: VocabularyTargetResult[];
+  hitTargetWordIds: string[];
+  completedTargetWordIds: string[];
   reviewNeededWordIds: string[];
   questions: ReviewQuestion[];
   recommendedAction: string;

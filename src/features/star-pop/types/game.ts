@@ -10,6 +10,8 @@ export type Block = {
   state: BlockState;
   dropDistance: number;
   shiftDistance: number;
+  label?: string;
+  wordId?: string;
 };
 
 export type BoardCell = Block | null;

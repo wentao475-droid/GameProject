@@ -1,27 +1,57 @@
 "use client";
 
+import { VocabularyBoard } from "@/features/vocabulary/components/VocabularyBoard";
 import styles from "@/features/vocabulary/components/VocabularySession.module.css";
-import type { WordEntry } from "@/features/vocabulary/types/words";
+import type { Board, Position } from "@/features/star-pop/types/game";
+
+type SessionTarget = {
+  id: string;
+  word: string;
+  meaning: string;
+  collectedCount: number;
+  targetCount: number;
+};
 
 type VocabularySessionProps = {
-  activeWord: WordEntry;
-  currentIndex: number;
-  total: number;
-  isMeaningVisible: boolean;
-  onRevealMeaning: () => void;
-  onMarkKnown: () => void;
-  onMarkUncertain: () => void;
+  targets: SessionTarget[];
+  completedTargetCount: number;
+  board: Board;
+  selectedGroup: Position[];
+  invalidCellId: string | null;
+  turnFeedback: {
+    kind: "invalid" | "valid";
+    label: string;
+    scoreDelta: number;
+    id: number;
+    anchor: {
+      row: number;
+      col: number;
+    };
+  } | null;
+  previewCount: number;
+  score: number;
+  remainingBlocks: number;
+  disabled: boolean;
+  onHover: (position: Position) => void;
+  onLeave: () => void;
+  onClick: (position: Position) => void;
   onGoHome: () => void;
 };
 
 export function VocabularySession({
-  activeWord,
-  currentIndex,
-  total,
-  isMeaningVisible,
-  onRevealMeaning,
-  onMarkKnown,
-  onMarkUncertain,
+  targets,
+  completedTargetCount,
+  board,
+  selectedGroup,
+  invalidCellId,
+  turnFeedback,
+  previewCount,
+  score,
+  remainingBlocks,
+  disabled,
+  onHover,
+  onLeave,
+  onClick,
   onGoHome,
 }: VocabularySessionProps) {
   return (
@@ -29,51 +59,63 @@ export function VocabularySession({
       <header className={styles.hero}>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Session</p>
-          <h1 className={styles.title}>今日词卡训练</h1>
+          <h1 className={styles.title}>目标词收集对局</h1>
           <p className={styles.subtitle}>
-            先尝试回忆释义，再标记自己是“认识”还是“模糊”，让系统生成本轮复习结算。
+            观察棋盘里的英文标签，尽量优先消掉带有目标词的同色连块。只要一组里包含目标词，就会累计顶部进度。
           </p>
         </div>
         <div className={styles.progressBadge}>
-          <span className={styles.progressLabel}>进度</span>
+          <span className={styles.progressLabel}>完成目标</span>
           <strong>
-            {currentIndex}/{total}
+            {completedTargetCount}/{targets.length}
           </strong>
         </div>
       </header>
 
-      <article className={styles.card}>
-        <div className={styles.cardHeader}>
-          <span className={styles.partOfSpeech}>{activeWord.partOfSpeech}</span>
-          <span className={styles.packTag}>{activeWord.packId}</span>
-        </div>
+      <section className={styles.goalGrid} aria-label="当前目标词">
+        {targets.map((target) => {
+          const completed = target.collectedCount >= target.targetCount;
 
-        <div className={styles.wordBlock}>
-          <h2 className={styles.word}>{activeWord.word}</h2>
-          <p className={styles.meaning}>
-            {isMeaningVisible ? activeWord.meaning : "先回忆中文释义，再决定是否显示提示。"}
-          </p>
-        </div>
+          return (
+            <article
+              key={target.id}
+              className={`${styles.goalCard} ${completed ? styles.goalCardComplete : ""}`}
+            >
+              <div className={styles.goalHeader}>
+                <span className={styles.goalMeaning}>{target.meaning}</span>
+                <span className={styles.goalProgress}>
+                  {Math.min(target.collectedCount, target.targetCount)}/{target.targetCount}
+                </span>
+              </div>
+              <strong className={styles.goalWord}>{target.word}</strong>
+              <div className={styles.goalTrack} aria-hidden="true">
+                <span
+                  className={`${styles.goalFill} ${completed ? styles.goalFillComplete : ""}`}
+                  style={{
+                    width: `${Math.min((target.collectedCount / target.targetCount) * 100, 100)}%`,
+                  }}
+                />
+              </div>
+            </article>
+          );
+        })}
+      </section>
 
-        <div className={styles.exampleBlock}>
-          <span className={styles.exampleLabel}>Example</span>
-          <p className={styles.example}>{activeWord.example}</p>
-        </div>
+      <VocabularyBoard
+        board={board}
+        selectedGroup={selectedGroup}
+        invalidCellId={invalidCellId}
+        turnFeedback={turnFeedback}
+        disabled={disabled}
+        previewCount={previewCount}
+        score={score}
+        remainingBlocks={remainingBlocks}
+        onHover={onHover}
+        onLeave={onLeave}
+        onClick={onClick}
+      />
 
-        {!isMeaningVisible ? (
-          <button type="button" className={styles.revealButton} onClick={onRevealMeaning}>
-            显示释义提示
-          </button>
-        ) : null}
-      </article>
-
-      <section className={styles.actions} aria-label="词卡标记操作">
-        <button type="button" className={styles.primaryButton} onClick={onMarkKnown}>
-          认识
-        </button>
-        <button type="button" className={styles.secondaryButton} onClick={onMarkUncertain}>
-          模糊
-        </button>
+      <section className={styles.actions}>
         <button type="button" className={styles.ghostButton} onClick={onGoHome}>
           返回首页
         </button>

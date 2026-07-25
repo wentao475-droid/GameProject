@@ -5,6 +5,7 @@ import type {
   TodayVocabularyPack,
   VocabularyProfile,
 } from "@/features/vocabulary/lib/vocabularyProgress";
+import { SESSION_TARGET_WORD_COUNT } from "@/features/vocabulary/lib/vocabularyGame";
 import type {
   VocabularyDailyTask,
   VocabularySettingsPatch,
@@ -41,9 +42,10 @@ export function VocabularyHome({
         </div>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Vocabulary Mode</p>
-          <h1 className={styles.title}>背单词训练首页</h1>
+          <h1 className={styles.title}>单词版星块爆破</h1>
           <p className={styles.subtitle}>
-            用独立词汇存档驱动今日学习，先处理待复习词，再补充新词，和原消除玩法完全分离。
+            保留独立词汇页，但局内改成真实棋盘对局。每局抽取 {SESSION_TARGET_WORD_COUNT}
+            个目标词，消除包含这些词的同色连块来推进收集进度。
           </p>
         </div>
       </header>
@@ -55,14 +57,14 @@ export function VocabularyHome({
           <p className={styles.cardBody}>{todayPack.pack.description}</p>
           <div className={styles.statRow}>
             <span>{todayPack.pack.difficultyLabel}</span>
-            <span>{todayPack.words.length}/{profile.dailyWordTarget} 个</span>
+            <span>{todayPack.words.length}/{profile.dailyWordTarget} 个候选词</span>
           </div>
         </article>
 
         <article className={styles.card}>
           <span className={styles.cardLabel}>待复习数量</span>
           <strong className={styles.metricValue}>{reviewQueueCount}</strong>
-          <p className={styles.cardBody}>根据现有学习进度自动计算，优先抽取到期单词进入今日训练。</p>
+          <p className={styles.cardBody}>系统会优先把到期词放进本局目标位，继续复习会优先带上未完成目标。</p>
         </article>
       </section>
 
@@ -85,7 +87,7 @@ export function VocabularyHome({
         <div className={styles.infoHeader}>
           <div>
             <span className={styles.cardLabel}>今日任务</span>
-            <strong className={styles.cardTitle}>每日学习任务摘要</strong>
+            <strong className={styles.cardTitle}>目标词学习进度</strong>
           </div>
           <span className={styles.infoBadge}>
             {dailyTasks.filter((task) => task.completed).length}/{dailyTasks.length} 完成
@@ -119,6 +121,19 @@ export function VocabularyHome({
         </div>
       </section>
 
+      <section className={styles.infoCard} aria-label="玩法说明">
+        <div className={styles.infoHeader}>
+          <div>
+            <span className={styles.cardLabel}>玩法说明</span>
+            <strong className={styles.cardTitle}>同色消除，顺手收词</strong>
+          </div>
+          <span className={styles.infoBadge}>真实棋盘</span>
+        </div>
+        <p className={styles.infoText}>
+          顶部会固定展示 3 个目标词，每个目标需要在一局里收集满 3 次。只要你消掉的连块里带有目标词标签，就会累计对应进度。
+        </p>
+      </section>
+
       <section className={styles.infoCard} aria-label="难度说明">
         <div className={styles.infoHeader}>
           <div>
@@ -128,8 +143,8 @@ export function VocabularyHome({
           <span className={styles.infoBadge}>{todayPack.pack.difficultyLabel}</span>
         </div>
         <p className={styles.infoText}>
-          当前词包覆盖中国高中进阶词汇与四级衔接词，不会退回到基础启蒙词表；复习队列依据 `seenCount`
-          、`correctCount` 和 `lastReviewedAt` 自动排序。
+          当前词库固定使用高考进阶与 CET4 衔接词，不回退到基础词表；复习优先级仍依据 `seenCount`
+          、`correctCount` 和 `lastReviewedAt` 自动计算。
         </p>
       </section>
 
@@ -159,21 +174,8 @@ export function VocabularyHome({
 
           <label className={styles.toggleRow}>
             <span className={styles.toggleCopy}>
-              <strong>显示释义</strong>
-              <span>训练中默认展示中文释义，可随时切回先回忆再揭示。</span>
-            </span>
-            <input
-              type="checkbox"
-              className={styles.checkbox}
-              checked={profile.showMeaningHint}
-              onChange={(event) => onUpdateSettings({ showMeaningHint: event.target.checked })}
-            />
-          </label>
-
-          <label className={styles.toggleRow}>
-            <span className={styles.toggleCopy}>
               <strong>启用测验</strong>
-              <span>结果页保留 1 组轻量测验，强化本轮提取记忆。</span>
+              <span>结果页保留 1 到 2 题轻量测验，强化本局目标词提取。</span>
             </span>
             <input
               type="checkbox"
@@ -189,16 +191,16 @@ export function VocabularyHome({
         <div className={styles.infoHeader}>
           <div>
             <span className={styles.cardLabel}>开始训练</span>
-            <strong className={styles.cardTitle}>准备进入今日训练流程</strong>
+            <strong className={styles.cardTitle}>进入今日目标词对局</strong>
           </div>
           <span className={styles.infoBadge}>独立状态</span>
         </div>
         <p className={styles.infoText}>
-          点击后会切换到独立 vocabulary 页面状态，不影响原游戏的首页、对局和结算状态。
+          点击后会进入独立的 vocabulary 对局，不影响原游戏首页、主模式和结算状态。
         </p>
         <div className={styles.actions}>
           <button type="button" className={styles.primaryButton} onClick={onStart}>
-            开始今日训练
+            开始今日对局
           </button>
           <Link href={homeHref} className={styles.secondaryButton}>
             返回原游戏

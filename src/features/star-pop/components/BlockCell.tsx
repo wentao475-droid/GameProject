@@ -44,13 +44,14 @@ export function BlockCell({
       type="button"
       className={classNames}
       style={movementStyle}
-      aria-label={`${block.color} 星块`}
+      aria-label={block.label ? `${block.color} 星块，${block.label}` : `${block.color} 星块`}
       onMouseEnter={onHover}
       onFocus={onHover}
       onClick={onClick}
       disabled={disabled}
     >
       <span className={styles.sparkle} />
+      {block.label ? <span className={styles.label}>{block.label}</span> : null}
     </button>
   );
 }

@@ -6,6 +6,7 @@ import styles from "@/features/vocabulary/components/VocabularyResult.module.css
 import type {
   VocabularyDailyTask,
   VocabularySessionResult,
+  VocabularyTargetResult,
 } from "@/features/vocabulary/types/words";
 
 type VocabularyResultProps = {
@@ -20,20 +21,32 @@ type VocabularyResultProps = {
   onGoHome: () => void;
 };
 
-function renderWordList(wordIds: string[]) {
-  if (wordIds.length === 0) {
-    return <p className={styles.emptyText}>本轮暂无对应单词。</p>;
+function renderTargetList(targetResults: VocabularyTargetResult[], emptyText: string) {
+  if (targetResults.length === 0) {
+    return <p className={styles.emptyText}>{emptyText}</p>;
   }
 
   return (
-    <div className={styles.wordList}>
-      {wordIds.map((wordId) => {
-        const entry = getWordEntry(wordId);
+    <div className={styles.targetList}>
+      {targetResults.map((target) => {
+        const entry = getWordEntry(target.wordId);
 
         return (
-          <article key={wordId} className={styles.wordChip}>
-            <strong>{entry?.word ?? wordId}</strong>
-            <span>{entry?.meaning ?? "暂无释义"}</span>
+          <article key={target.wordId} className={styles.targetCard}>
+            <div className={styles.targetHeader}>
+              <strong>{entry?.word ?? target.wordId}</strong>
+              <span className={styles.targetBadge}>
+                {Math.min(target.collectedCount, target.targetCount)}/{target.targetCount}
+              </span>
+            </div>
+            <span className={styles.targetMeaning}>{entry?.meaning ?? "暂无释义"}</span>
+            <p className={styles.targetMeta}>
+              {target.completed
+                ? "已完成本局收集"
+                : target.hit
+                  ? "已命中，但还需继续收集"
+                  : "本局未命中，建议优先复习"}
+            </p>
           </article>
         );
       })}
@@ -52,22 +65,25 @@ export function VocabularyResult({
   onContinueReview,
   onGoHome,
 }: VocabularyResultProps) {
+  const hitTargetResults = result.targetResults.filter((target) => target.hit);
+  const reviewTargetResults = result.targetResults.filter((target) => !target.completed);
+
   return (
     <section className={styles.screen}>
       <header className={styles.hero}>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Result</p>
-          <h1 className={styles.title}>本轮复习结算</h1>
+          <h1 className={styles.title}>本局目标词结算</h1>
           <p className={styles.subtitle}>{result.recommendedAction}</p>
         </div>
         <div className={styles.summaryGrid}>
           <article className={styles.summaryCard}>
-            <span className={styles.summaryLabel}>新词</span>
-            <strong>{result.introducedWordIds.length}</strong>
+            <span className={styles.summaryLabel}>分数</span>
+            <strong>{result.score}</strong>
           </article>
           <article className={styles.summaryCard}>
-            <span className={styles.summaryLabel}>巩固词</span>
-            <strong>{result.reinforcedWordIds.length}</strong>
+            <span className={styles.summaryLabel}>命中目标词</span>
+            <strong>{result.hitTargetWordIds.length}</strong>
           </article>
           <article className={styles.summaryCard}>
             <span className={styles.summaryLabel}>待复习词</span>
@@ -75,6 +91,17 @@ export function VocabularyResult({
           </article>
         </div>
       </header>
+
+      <section className={styles.card} aria-label="本局摘要">
+        <div className={styles.cardHeader}>
+          <div>
+            <span className={styles.cardLabel}>Round Summary</span>
+            <strong className={styles.cardTitle}>真实棋盘对局表现</strong>
+          </div>
+          <span className={styles.quizBadge}>消除 {result.removedBlockCount} 块</span>
+        </div>
+        {renderTargetList(result.targetResults, "本局没有目标词数据。")}
+      </section>
 
       <section className={styles.card} aria-label="今日任务进度">
         <div className={styles.cardHeader}>
@@ -112,26 +139,18 @@ export function VocabularyResult({
       <section className={styles.grid} aria-label="训练结果分类">
         <article className={styles.card}>
           <div className={styles.cardHeader}>
-            <span className={styles.cardLabel}>新词</span>
-            <strong className={styles.cardTitle}>本轮新接触</strong>
+            <span className={styles.cardLabel}>命中目标词</span>
+            <strong className={styles.cardTitle}>本局至少碰到过一次</strong>
           </div>
-          {renderWordList(result.introducedWordIds)}
-        </article>
-
-        <article className={styles.card}>
-          <div className={styles.cardHeader}>
-            <span className={styles.cardLabel}>巩固词</span>
-            <strong className={styles.cardTitle}>本轮已打牢</strong>
-          </div>
-          {renderWordList(result.reinforcedWordIds)}
+          {renderTargetList(hitTargetResults, "本局还没有命中任何目标词。")}
         </article>
 
         <article className={styles.card}>
           <div className={styles.cardHeader}>
             <span className={styles.cardLabel}>待复习词</span>
-            <strong className={styles.cardTitle}>建议下一轮优先处理</strong>
+            <strong className={styles.cardTitle}>下一局优先继续带上</strong>
           </div>
-          {renderWordList(result.reviewNeededWordIds)}
+          {renderTargetList(reviewTargetResults, "本局已完成全部目标词收集。")}
         </article>
       </section>
 
@@ -202,7 +221,7 @@ export function VocabularyResult({
 
       <section className={styles.actions}>
         <button type="button" className={styles.primaryButton} onClick={onContinueReview}>
-          {result.reviewNeededWordIds.length > 0 ? "继续复习待掌握词" : "再来一轮今日训练"}
+          {result.reviewNeededWordIds.length > 0 ? "继续复习未完成目标词" : "再开一局新目标"}
         </button>
         <button type="button" className={styles.secondaryButton} onClick={onGoHome}>
           返回首页

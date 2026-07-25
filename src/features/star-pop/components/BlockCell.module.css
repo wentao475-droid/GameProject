@@ -81,6 +81,23 @@
   filter: blur(3px);
 }
 
+.label {
+  position: absolute;
+  inset: auto 8% 10% 8%;
+  z-index: 1;
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: clamp(0.42rem, 1.55vw, 0.74rem);
+  font-weight: 800;
+  line-height: 1.05;
+  text-align: center;
+  text-shadow: 0 2px 8px rgba(8, 6, 20, 0.4);
+  word-break: break-word;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .emptyCell {
   background: rgba(255, 255, 255, 0.04);
   border: 1px dashed rgba(255, 255, 255, 0.05);

@@ -4,7 +4,7 @@
 }
 
 .hero,
-.card {
+.goalCard {
   display: grid;
   gap: 14px;
   padding: 24px;
@@ -29,7 +29,7 @@
 
 .eyebrow,
 .progressLabel,
-.exampleLabel {
+.goalMeaning {
   margin: 0;
   color: var(--theme-eyebrow);
   font-size: 0.76rem;
@@ -44,9 +44,7 @@
   line-height: 0.95;
 }
 
-.subtitle,
-.meaning,
-.example {
+.subtitle {
   margin: 0;
   color: var(--muted);
   line-height: 1.65;
@@ -67,54 +65,62 @@
   line-height: 1;
 }
 
-.cardHeader {
+.goalGrid,
+.actions {
+  display: grid;
+  gap: 12px;
+}
+
+.goalCard {
+  gap: 12px;
+  padding: 18px;
+}
+
+.goalCardComplete {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--tone-mint-2) 18%, transparent), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04)),
+    var(--panel-strong);
+}
+
+.goalHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.partOfSpeech,
-.packTag {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
+.goalProgress {
+  color: var(--theme-highlight);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.goalWord {
+  font-size: 1.3rem;
+  line-height: 1.1;
+}
+
+.goalTrack {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 10px;
   border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.wordBlock {
-  display: grid;
-  gap: 10px;
+.goalFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--theme-primary-start) 0%, var(--theme-primary-end) 100%);
 }
 
-.word {
-  margin: 0;
-  font-size: clamp(2.6rem, 12vw, 4.4rem);
-  line-height: 0.95;
+.goalFillComplete {
+  background: linear-gradient(90deg, var(--theme-stage-mint-start) 0%, var(--theme-stage-mint-end) 100%);
 }
 
-.meaning {
-  min-height: 52px;
-  font-size: 1rem;
-}
-
-.exampleBlock {
-  display: grid;
-  gap: 8px;
-  padding: 16px 18px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.revealButton,
-.primaryButton,
-.secondaryButton,
 .ghostButton {
   min-height: 52px;
   display: inline-flex;
@@ -122,51 +128,21 @@
   justify-content: center;
   padding: 14px 18px;
   border-radius: 999px;
+  color: var(--text);
   font-size: 0.98rem;
   font-weight: 800;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
     border-color 160ms ease;
 }
 
-.revealButton,
-.ghostButton {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.primaryButton {
-  color: var(--theme-primary-text);
-  background: linear-gradient(135deg, var(--theme-primary-start) 0%, var(--theme-primary-end) 100%);
-  border: 0;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.65),
-    0 14px 30px var(--theme-primary-shadow);
-}
-
-.secondaryButton {
-  color: var(--text);
-  background: linear-gradient(135deg, rgba(255, 227, 168, 0.18), rgba(123, 198, 255, 0.12));
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.actions {
-  display: grid;
-  gap: 12px;
-}
-
-.revealButton:hover,
-.primaryButton:hover,
-.secondaryButton:hover,
 .ghostButton:hover {
   transform: translateY(-1px);
 }
 
-.revealButton:focus-visible,
-.primaryButton:focus-visible,
-.secondaryButton:focus-visible,
 .ghostButton:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
@@ -178,7 +154,7 @@
     align-items: center;
   }
 
-  .actions {
+  .goalGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

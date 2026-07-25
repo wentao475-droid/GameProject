@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getDefaultVocabularyProfile } from "@/features/vocabulary/lib/storage";
+import { SESSION_TARGET_WORD_COUNT } from "@/features/vocabulary/lib/vocabularyGame";
 import {
   buildVocabularyDailyTasks,
   buildSessionResult,
@@ -7,9 +8,9 @@ import {
   buildTodayWordPack,
   getReviewQueueCount,
   getVocabularyDailyActivity,
-  recordVocabularyCardResults,
   recordVocabularyQuizAnswer,
   recordVocabularySessionCompletion,
+  recordVocabularyTargetResults,
   updateWordProgress,
   type VocabularyProfile,
 } from "@/features/vocabulary/lib/vocabularyProgress";
@@ -103,16 +104,20 @@ describe("vocabularyProgress", () => {
     expect(questions[0]?.prompt).toContain("allocate");
   });
 
-  it("builds a session result with stats, recommendation and lightweight quiz", () => {
+  it("builds a session result from target collection progress", () => {
     const result = buildSessionResult({
       dateKey: "2026-07-25",
       packId: "gaokao-advanced",
-      introducedWordIds: ["allocate", "derive"],
+      score: 180,
+      removedBlockCount: 14,
       quizEnabled: true,
-      cardResults: [
+      targetResults: [
         {
           wordId: "allocate",
-          decision: "known",
+          collectedCount: 3,
+          targetCount: 3,
+          hit: true,
+          completed: true,
           wasNew: true,
           wasReview: false,
           previousStage: "new",
@@ -120,7 +125,10 @@ describe("vocabularyProgress", () => {
         },
         {
           wordId: "derive",
-          decision: "uncertain",
+          collectedCount: 1,
+          targetCount: 3,
+          hit: true,
+          completed: false,
           wasNew: true,
           wasReview: false,
           previousStage: "new",
@@ -128,24 +136,29 @@ describe("vocabularyProgress", () => {
         },
         {
           wordId: "subtle",
-          decision: "known",
+          collectedCount: 0,
+          targetCount: 3,
+          hit: false,
+          completed: false,
           wasNew: false,
           wasReview: true,
           previousStage: "learning",
-          nextStage: "familiar",
+          nextStage: "learning",
         },
       ],
     });
 
-    expect(result.introducedWordIds).toEqual(["allocate", "derive"]);
-    expect(result.reinforcedWordIds).toEqual(["subtle"]);
-    expect(result.reviewNeededWordIds).toEqual(["derive"]);
-    expect(result.questions).toHaveLength(1);
-    expect(result.questions[0]?.wordId).toBe("derive");
-    expect(result.recommendedAction).toContain("继续复习 1 个待掌握词");
+    expect(result.score).toBe(180);
+    expect(result.removedBlockCount).toBe(14);
+    expect(result.hitTargetWordIds).toEqual(["allocate", "derive"]);
+    expect(result.completedTargetWordIds).toEqual(["allocate"]);
+    expect(result.reviewNeededWordIds).toEqual(["derive", "subtle"]);
+    expect(result.questions).toHaveLength(2);
+    expect(result.questions.map((question) => question.wordId)).toEqual(["derive", "subtle"]);
+    expect(result.recommendedAction).toContain("继续复习 2 个未完成目标词");
   });
 
-  it("tracks daily activity and builds daily task summary", () => {
+  it("tracks target-based daily activity and builds target-based daily task summary", () => {
     const profile = createProfile({
       dailyWordTarget: 6,
       quizEnabled: true,
@@ -154,22 +167,31 @@ describe("vocabularyProgress", () => {
       date: new Date("2026-07-25T09:30:00.000Z"),
     });
     const dateKey = todayPack.dateKey;
+    const reviewTargetIds = todayPack.reviewWords
+      .slice(0, SESSION_TARGET_WORD_COUNT)
+      .map((word) => word.id);
     const activity = recordVocabularySessionCompletion(
       recordVocabularyQuizAnswer(
-        recordVocabularyCardResults(
+        recordVocabularyTargetResults(
           getVocabularyDailyActivity(profile, dateKey),
           [
             {
               wordId: todayPack.newWords[0]?.id ?? "allocate",
-              decision: "known",
+              collectedCount: 3,
+              targetCount: 3,
+              hit: true,
+              completed: true,
               wasNew: true,
               wasReview: false,
               previousStage: "new",
               nextStage: "learning",
             },
             {
-              wordId: todayPack.reviewWords[0]?.id ?? "derive",
-              decision: "uncertain",
+              wordId: reviewTargetIds[0] ?? "derive",
+              collectedCount: 1,
+              targetCount: 3,
+              hit: true,
+              completed: false,
               wasNew: false,
               wasReview: true,
               previousStage: "learning",
@@ -193,15 +215,17 @@ describe("vocabularyProgress", () => {
 
     expect(tasks.map((task) => task.id)).toEqual(["daily-target", "review-queue", "quick-quiz"]);
     expect(tasks[0]).toMatchObject({
-      progress: 2,
-      target: 6,
-      completed: false,
+      progress: 1,
+      target: 1,
+      completed: true,
     });
-    expect(tasks[1]?.progress).toBe(todayPack.reviewWords.length > 0 ? 1 : 0);
+    expect(tasks[1]?.progress).toBe(0);
+    expect(tasks[1]?.target).toBe(reviewTargetIds.length);
     expect(tasks[2]).toMatchObject({
       progress: 1,
       target: 1,
       completed: true,
     });
+    expect(activity.uncertainWordIds).toContain(reviewTargetIds[0] ?? "derive");
   });
 });

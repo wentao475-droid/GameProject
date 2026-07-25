@@ -14,18 +14,15 @@ export function VocabularyShell() {
     reviewQueueCount,
     dailyTasks,
     homeHref,
-    activeWord,
-    activeWords,
-    currentIndex,
-    isMeaningVisible,
     result,
     quizAnswersByQuestionId,
     quizCompletedCount,
     quizCorrectCount,
+    sessionTargets,
+    sessionCompletedTargetCount,
+    game,
     startSession,
     continueReview,
-    revealMeaning,
-    markWord,
     answerQuestion,
     updateSettings,
     goHome,
@@ -48,15 +45,21 @@ export function VocabularyShell() {
             onUpdateSettings={updateSettings}
             onStart={startSession}
           />
-        ) : screen === "session" && activeWord ? (
+        ) : screen === "session" && sessionTargets.length > 0 ? (
           <VocabularySession
-            activeWord={activeWord}
-            currentIndex={currentIndex + 1}
-            total={activeWords.length}
-            isMeaningVisible={isMeaningVisible}
-            onRevealMeaning={revealMeaning}
-            onMarkKnown={() => markWord(true)}
-            onMarkUncertain={() => markWord(false)}
+            targets={sessionTargets}
+            completedTargetCount={sessionCompletedTargetCount}
+            board={game.board}
+            selectedGroup={game.selectedGroup}
+            invalidCellId={game.invalidCellId}
+            turnFeedback={game.turnFeedback}
+            previewCount={game.previewCount}
+            score={game.score}
+            remainingBlocks={game.remainingBlocks}
+            disabled={game.isAnimating}
+            onHover={game.handleBlockHover}
+            onLeave={game.clearPreview}
+            onClick={game.handleBlockClick}
             onGoHome={goHome}
           />
         ) : screen === "result" && result ? (

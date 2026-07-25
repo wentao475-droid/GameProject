@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { getWordEntry } from "@/features/vocabulary/lib/wordBank";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getWordEntry, getWordsByPack } from "@/features/vocabulary/lib/wordBank";
 import {
   readVocabularyProfile,
   writeVocabularyProfile,
 } from "@/features/vocabulary/lib/storage";
+import { useVocabularyGame } from "@/features/vocabulary/hooks/useVocabularyGame";
 import {
   buildSessionResult,
   buildVocabularyDailyTasks,
@@ -13,21 +14,39 @@ import {
   getVocabularyDailyActivity,
   getWordProgress,
   getReviewQueueCount,
-  recordVocabularyCardResults,
   recordVocabularyQuizAnswer,
   recordVocabularySessionCompletion,
+  recordVocabularyTargetResults,
   updateWordProgress,
   type VocabularyProfile,
   type TodayVocabularyPack,
 } from "@/features/vocabulary/lib/vocabularyProgress";
+import {
+  selectSessionTargetWords,
+  TARGET_WORD_COLLECTION_GOAL,
+} from "@/features/vocabulary/lib/vocabularyGame";
 import type {
   VocabularySettingsPatch,
-  VocabularySessionCardResult,
   VocabularySessionResult,
+  VocabularyTargetResult,
   WordEntry,
 } from "@/features/vocabulary/types/words";
 
 export type VocabularyScreen = "home" | "session" | "result";
+
+type ActiveSessionTarget = {
+  entry: WordEntry;
+  wasNew: boolean;
+  wasReview: boolean;
+  previousStage: VocabularyTargetResult["previousStage"];
+};
+
+type ActiveSession = {
+  sessionId: number;
+  packId: string;
+  dateKey: string;
+  targets: ActiveSessionTarget[];
+};
 
 function getGameHomeHref() {
   const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -37,15 +56,11 @@ function getGameHomeHref() {
 export function useVocabularyApp() {
   const [screen, setScreen] = useState<VocabularyScreen>("home");
   const [profile, setProfile] = useState<VocabularyProfile | null>(null);
-  const [activeWords, setActiveWords] = useState<WordEntry[]>([]);
-  const [sessionPackId, setSessionPackId] = useState<string | null>(null);
-  const [sessionDateKey, setSessionDateKey] = useState<string | null>(null);
-  const [sessionIntroducedWordIds, setSessionIntroducedWordIds] = useState<string[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [sessionResults, setSessionResults] = useState<VocabularySessionCardResult[]>([]);
   const [result, setResult] = useState<VocabularySessionResult | null>(null);
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState<Record<string, string>>({});
-  const [revealedWordIds, setRevealedWordIds] = useState<Record<string, true>>({});
+  const nextSessionIdRef = useRef(1);
+  const game = useVocabularyGame();
 
   useEffect(() => {
     setProfile(readVocabularyProfile());
@@ -74,6 +89,7 @@ export function useVocabularyApp() {
 
     return getReviewQueueCount(profile);
   }, [profile]);
+
   const dailyTasks = useMemo(() => {
     if (!profile || !todayPack) {
       return [];
@@ -82,11 +98,6 @@ export function useVocabularyApp() {
     return buildVocabularyDailyTasks(profile, todayPack);
   }, [profile, todayPack]);
 
-  const activeWord = activeWords[currentIndex] ?? null;
-  const isMeaningVisible = activeWord
-    ? profile?.showMeaningHint || Boolean(revealedWordIds[activeWord.id])
-    : false;
-  const progressValue = activeWords.length === 0 ? 0 : currentIndex + 1;
   const quizQuestions = result?.questions ?? [];
   const quizCompletedCount = quizQuestions.reduce((count, question) => {
     return quizAnswersByQuestionId[question.id] ? count + 1 : count;
@@ -95,20 +106,67 @@ export function useVocabularyApp() {
     return quizAnswersByQuestionId[question.id] === question.answer ? count + 1 : count;
   }, 0);
 
+  const sessionTargets = useMemo(() => {
+    if (!activeSession) {
+      return [];
+    }
+
+    return activeSession.targets.map((target) => ({
+      ...target.entry,
+      collectedCount: Math.min(
+        game.collectedCountsByWordId[target.entry.id] ?? 0,
+        TARGET_WORD_COLLECTION_GOAL,
+      ),
+      targetCount: TARGET_WORD_COLLECTION_GOAL,
+    }));
+  }, [activeSession, game.collectedCountsByWordId]);
+
+  const sessionCompletedTargetCount = sessionTargets.filter(
+    (target) => target.collectedCount >= target.targetCount,
+  ).length;
+
   const startSessionWithWords = useCallback(
     (
       words: WordEntry[],
       options?: {
         packId?: string;
         dateKey?: string;
-        introducedWordIds?: string[];
+        priorityWordIds?: string[];
+        forcedReviewWordIds?: string[];
       },
     ) => {
-      if (!profile || words.length === 0) {
+      if (!profile || words.length === 0 || !todayPack) {
+        return;
+      }
+
+      const targetWords = selectSessionTargetWords(words, {
+        priorityWordIds: options?.priorityWordIds,
+      });
+
+      if (targetWords.length === 0) {
         return;
       }
 
       const startedAt = new Date().toISOString();
+      const sessionId = nextSessionIdRef.current;
+      nextSessionIdRef.current += 1;
+      const forcedReviewWordIdSet = new Set(options?.forcedReviewWordIds ?? []);
+      const todayNewWordIdSet = new Set(todayPack.newWords.map((word) => word.id));
+      const targets: ActiveSessionTarget[] = targetWords.map((entry) => {
+        const previousProgress = getWordProgress(profile, entry.id);
+        const wasReview =
+          forcedReviewWordIdSet.has(entry.id) ||
+          previousProgress.seenCount > 0 ||
+          previousProgress.stage !== "new";
+
+        return {
+          entry,
+          wasNew: todayNewWordIdSet.has(entry.id) && !forcedReviewWordIdSet.has(entry.id),
+          wasReview,
+          previousStage: previousProgress.stage,
+        };
+      });
+
       setProfile((currentProfile) => {
         if (!currentProfile) {
           return currentProfile;
@@ -119,18 +177,22 @@ export function useVocabularyApp() {
           lastStudiedAt: startedAt,
         };
       });
-      setActiveWords(words);
-      setSessionPackId(options?.packId ?? words[0]?.packId ?? null);
-      setSessionDateKey(options?.dateKey ?? todayPack?.dateKey ?? null);
-      setSessionIntroducedWordIds(options?.introducedWordIds ?? []);
-      setCurrentIndex(0);
-      setSessionResults([]);
       setResult(null);
       setQuizAnswersByQuestionId({});
-      setRevealedWordIds({});
+      setActiveSession({
+        sessionId,
+        packId: options?.packId ?? todayPack.pack.id,
+        dateKey: options?.dateKey ?? todayPack.dateKey,
+        targets,
+      });
+      game.startGame({
+        sessionId,
+        targetWords,
+        boardWords: getWordsByPack(options?.packId ?? todayPack.pack.id),
+      });
       setScreen("session");
     },
-    [profile, todayPack?.dateKey],
+    [game, profile, todayPack],
   );
 
   const startSession = useCallback(() => {
@@ -141,14 +203,12 @@ export function useVocabularyApp() {
     startSessionWithWords(todayPack.words, {
       packId: todayPack.pack.id,
       dateKey: todayPack.dateKey,
-      introducedWordIds: todayPack.newWords
-        .map((word) => word.id)
-        .filter((wordId) => todayPack.words.some((word) => word.id === wordId)),
+      forcedReviewWordIds: todayPack.reviewWords.map((word) => word.id),
     });
   }, [startSessionWithWords, todayPack]);
 
   const continueReview = useCallback(() => {
-    if (!result) {
+    if (!todayPack || !result) {
       startSession();
       return;
     }
@@ -156,29 +216,88 @@ export function useVocabularyApp() {
     const reviewWords = result.reviewNeededWordIds
       .map((wordId) => getWordEntry(wordId))
       .filter((entry): entry is WordEntry => entry !== undefined);
+    const fillerWords = todayPack.words.filter((word) => !result.reviewNeededWordIds.includes(word.id));
+    const nextWords = [...reviewWords, ...fillerWords];
 
-    if (reviewWords.length > 0) {
-      startSessionWithWords(reviewWords, {
+    if (nextWords.length > 0) {
+      startSessionWithWords(nextWords, {
         packId: result.packId,
         dateKey: result.dateKey,
-        introducedWordIds: [],
+        priorityWordIds: result.reviewNeededWordIds,
+        forcedReviewWordIds: result.reviewNeededWordIds,
       });
       return;
     }
 
     startSession();
-  }, [result, startSession, startSessionWithWords]);
+  }, [result, startSession, startSessionWithWords, todayPack]);
 
-  const revealMeaning = useCallback(() => {
-    if (!activeWord) {
+  useEffect(() => {
+    if (!profile || !activeSession || !game.completion || game.completion.sessionId !== activeSession.sessionId) {
       return;
     }
 
-    setRevealedWordIds((currentValue) => ({
-      ...currentValue,
-      [activeWord.id]: true,
-    }));
-  }, [activeWord]);
+    const reviewedAt = new Date().toISOString();
+    const nextWordProgressById = { ...profile.wordProgressById };
+    const targetResults: VocabularyTargetResult[] = activeSession.targets.map((target) => {
+      const collectedCount = Math.min(
+        game.completion?.collectedCountsByWordId[target.entry.id] ?? 0,
+        TARGET_WORD_COLLECTION_GOAL,
+      );
+      const completed = collectedCount >= TARGET_WORD_COLLECTION_GOAL;
+      const nextProgress = updateWordProgress(
+        profile.wordProgressById[target.entry.id],
+        completed,
+        reviewedAt,
+      );
+
+      nextWordProgressById[target.entry.id] = nextProgress;
+
+      return {
+        wordId: target.entry.id,
+        collectedCount,
+        targetCount: TARGET_WORD_COLLECTION_GOAL,
+        hit: collectedCount > 0,
+        completed,
+        wasNew: target.wasNew,
+        wasReview: target.wasReview,
+        previousStage: target.previousStage,
+        nextStage: nextProgress.stage,
+      };
+    });
+    const activityDateKey = activeSession.dateKey;
+    const nextActivity = recordVocabularySessionCompletion(
+      recordVocabularyTargetResults(
+        getVocabularyDailyActivity(profile, activityDateKey),
+        targetResults,
+        reviewedAt,
+      ),
+      reviewedAt,
+    );
+    const nextProfile: VocabularyProfile = {
+      ...profile,
+      lastStudiedAt: reviewedAt,
+      wordProgressById: nextWordProgressById,
+      dailyActivityByDate: {
+        ...profile.dailyActivityByDate,
+        [activityDateKey]: nextActivity,
+      },
+    };
+    const sessionResult = buildSessionResult({
+      dateKey: activityDateKey,
+      packId: activeSession.packId,
+      score: game.completion.score,
+      removedBlockCount: game.completion.removedBlockCount,
+      targetResults,
+      quizEnabled: nextProfile.quizEnabled,
+    });
+
+    setProfile(nextProfile);
+    setResult(sessionResult);
+    setActiveSession(null);
+    setScreen("result");
+    game.clearCompletion();
+  }, [activeSession, game, profile]);
 
   const answerQuestion = useCallback((questionId: string, choice: string) => {
     const question = result?.questions.find((item) => item.id === questionId);
@@ -233,108 +352,13 @@ export function useVocabularyApp() {
     });
   }, []);
 
-  const markWord = useCallback(
-    (known: boolean) => {
-      if (!profile || !todayPack || !activeWord) {
-        return;
-      }
-
-      const reviewedAt = new Date().toISOString();
-      const previousProgress = getWordProgress(profile, activeWord.id);
-      const nextProgress = updateWordProgress(
-        profile.wordProgressById[activeWord.id],
-        known,
-        reviewedAt,
-      );
-      const activityDateKey = sessionDateKey ?? todayPack.dateKey;
-      const introducedWordIdSet = new Set(sessionIntroducedWordIds);
-      const cardResult: VocabularySessionCardResult = {
-        wordId: activeWord.id,
-        decision: known ? "known" : "uncertain",
-        wasNew: introducedWordIdSet.has(activeWord.id),
-        wasReview: !introducedWordIdSet.has(activeWord.id),
-        previousStage: previousProgress.stage,
-        nextStage: nextProgress.stage,
-      };
-      const nextProfile: VocabularyProfile = {
-        ...profile,
-        lastStudiedAt: reviewedAt,
-        wordProgressById: {
-          ...profile.wordProgressById,
-          [activeWord.id]: nextProgress,
-        },
-        dailyActivityByDate: {
-          ...profile.dailyActivityByDate,
-          [activityDateKey]: recordVocabularyCardResults(
-            getVocabularyDailyActivity(profile, activityDateKey),
-            [cardResult],
-            reviewedAt,
-          ),
-        },
-      };
-      const nextSessionResults = [...sessionResults, cardResult];
-      const isLastWord = currentIndex >= activeWords.length - 1;
-
-      setProfile(nextProfile);
-      setSessionResults(nextSessionResults);
-
-      if (isLastWord) {
-        const sessionResult = buildSessionResult({
-          dateKey: activityDateKey,
-          packId: sessionPackId ?? todayPack.pack.id,
-          introducedWordIds: sessionIntroducedWordIds,
-          cardResults: nextSessionResults,
-          quizEnabled: nextProfile.quizEnabled,
-        });
-
-        setProfile((currentProfile) => {
-          if (!currentProfile) {
-            return currentProfile;
-          }
-
-          return {
-            ...currentProfile,
-            dailyActivityByDate: {
-              ...currentProfile.dailyActivityByDate,
-              [activityDateKey]: recordVocabularySessionCompletion(
-                getVocabularyDailyActivity(currentProfile, activityDateKey),
-                reviewedAt,
-              ),
-            },
-          };
-        });
-        setResult(sessionResult);
-        setScreen("result");
-        return;
-      }
-
-      setCurrentIndex((value) => value + 1);
-    },
-    [
-      activeWord,
-      activeWords.length,
-      currentIndex,
-      profile,
-      sessionDateKey,
-      sessionIntroducedWordIds,
-      sessionPackId,
-      sessionResults,
-      todayPack,
-    ],
-  );
-
   const goHome = useCallback(() => {
-    setActiveWords([]);
-    setSessionPackId(null);
-    setSessionDateKey(null);
-    setSessionIntroducedWordIds([]);
-    setCurrentIndex(0);
-    setSessionResults([]);
+    game.resetGame();
+    setActiveSession(null);
     setResult(null);
     setQuizAnswersByQuestionId({});
-    setRevealedWordIds({});
     setScreen("home");
-  }, []);
+  }, [game]);
 
   return {
     screen,
@@ -343,20 +367,16 @@ export function useVocabularyApp() {
     reviewQueueCount,
     dailyTasks,
     homeHref: getGameHomeHref(),
-    activeWords,
-    activeWord,
-    currentIndex,
-    progressValue,
-    isMeaningVisible,
     result,
     quizQuestions,
     quizAnswersByQuestionId,
     quizCompletedCount,
     quizCorrectCount,
+    sessionTargets,
+    sessionCompletedTargetCount,
+    game,
     startSession,
     continueReview,
-    revealMeaning,
-    markWord,
     answerQuestion,
     updateSettings,
     goHome,

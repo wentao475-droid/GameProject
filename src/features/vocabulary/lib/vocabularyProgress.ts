@@ -5,12 +5,13 @@ import {
   getWordsByPack,
   WORDS,
 } from "@/features/vocabulary/lib/wordBank";
+import { SESSION_TARGET_WORD_COUNT } from "@/features/vocabulary/lib/vocabularyGame";
 import type {
   VocabularyDailyTask,
-  VocabularySessionCardResult,
   VocabularySessionResult,
   ReviewQuestion,
   VocabularyStage,
+  VocabularyTargetResult,
   WordEntry,
   WordPack,
 } from "@/features/vocabulary/types/words";
@@ -129,29 +130,36 @@ export function getVocabularyDailyActivity(
   return profile.dailyActivityByDate[dateKey] ?? getDefaultVocabularyDailyActivity();
 }
 
-export function recordVocabularyCardResults(
+export function recordVocabularyTargetResults(
   activity: VocabularyDailyActivity | undefined,
-  cardResults: VocabularySessionCardResult[],
+  targetResults: VocabularyTargetResult[],
   reviewedAt: string,
 ): VocabularyDailyActivity {
   const current = activity ?? getDefaultVocabularyDailyActivity();
+  const completedTargetWordIds = targetResults
+    .filter((result) => result.completed)
+    .map((result) => result.wordId);
 
   return {
     studiedWordIds: uniqueWordIds([
       ...current.studiedWordIds,
-      ...cardResults.map((result) => result.wordId),
+      ...targetResults.map((result) => result.wordId),
     ]),
     reviewedWordIds: uniqueWordIds([
       ...current.reviewedWordIds,
-      ...cardResults.filter((result) => result.wasReview).map((result) => result.wordId),
+      ...targetResults
+        .filter((result) => result.wasReview && result.completed)
+        .map((result) => result.wordId),
     ]),
     introducedWordIds: uniqueWordIds([
       ...current.introducedWordIds,
-      ...cardResults.filter((result) => result.wasNew).map((result) => result.wordId),
+      ...targetResults
+        .filter((result) => result.wasNew && result.completed)
+        .map((result) => result.wordId),
     ]),
     uncertainWordIds: uniqueWordIds([
-      ...current.uncertainWordIds,
-      ...cardResults.filter((result) => result.decision === "uncertain").map((result) => result.wordId),
+      ...current.uncertainWordIds.filter((wordId) => !completedTargetWordIds.includes(wordId)),
+      ...targetResults.filter((result) => !result.completed).map((result) => result.wordId),
     ]),
     quizAnsweredQuestionIds: current.quizAnsweredQuestionIds,
     quizCorrectQuestionIds: current.quizCorrectQuestionIds,
@@ -368,38 +376,38 @@ export function buildVocabularyDailyTasks(
   todayPack: TodayVocabularyPack,
 ): VocabularyDailyTask[] {
   const activity = getVocabularyDailyActivity(profile, todayPack.dateKey);
-  const studiedCount = Math.min(activity.studiedWordIds.length, profile.dailyWordTarget);
+  const reviewTargetIds = todayPack.reviewWords
+    .slice(0, SESSION_TARGET_WORD_COUNT)
+    .map((word) => word.id);
   const reviewedWordIdSet = new Set(activity.reviewedWordIds);
-  const reviewedDueCount = todayPack.reviewWords.filter((word) =>
-    reviewedWordIdSet.has(word.id),
-  ).length;
+  const reviewedDueCount = reviewTargetIds.filter((wordId) => reviewedWordIdSet.has(wordId)).length;
   const quizCompleted = activity.quizAnsweredQuestionIds.length > 0;
 
   return [
     {
       id: "daily-target",
-      title: "完成今日词量",
-      description: `按当前设置完成 ${profile.dailyWordTarget} 个词卡，保持每日连续学习。`,
-      progress: studiedCount,
-      target: profile.dailyWordTarget,
-      completed: studiedCount >= profile.dailyWordTarget,
+      title: "完成一局目标词收集",
+      description: "完成 1 局真实棋盘对局，让至少 3 个目标词进入本轮学习结算。",
+      progress: Math.min(activity.completedSessionCount, 1),
+      target: 1,
+      completed: activity.completedSessionCount >= 1,
     },
     {
       id: "review-queue",
-      title: "处理到期复习",
+      title: "处理待复习目标",
       description:
-        todayPack.reviewWords.length > 0
-          ? `优先清掉今天抽中的 ${todayPack.reviewWords.length} 个到期复习词。`
-          : "当前没有到期复习词，今日训练会自动补充新词和巩固词。",
+        reviewTargetIds.length > 0
+          ? `优先完成 ${reviewTargetIds.length} 个待复习目标词的收集。`
+          : "当前没有待复习目标词，系统会自动补充新词和巩固词。",
       progress: reviewedDueCount,
-      target: todayPack.reviewWords.length,
-      completed: todayPack.reviewWords.length === 0 || reviewedDueCount >= todayPack.reviewWords.length,
+      target: reviewTargetIds.length,
+      completed: reviewTargetIds.length === 0 || reviewedDueCount >= reviewTargetIds.length,
     },
     {
       id: "quick-quiz",
       title: "完成轻量测验",
       description: profile.quizEnabled
-        ? "结果页完成至少 1 组轻量测验，强化本轮提取记忆。"
+        ? "结果页完成至少 1 组轻量测验，强化本局目标词提取。"
         : "当前已关闭结果页测验，可在下方设置区重新开启。",
       progress: profile.quizEnabled ? (quizCompleted ? 1 : 0) : 0,
       target: profile.quizEnabled ? 1 : 0,
@@ -462,61 +470,63 @@ export function buildReviewQuestions(wordIds: string[], maxQuestions = 2): Revie
     }));
 }
 
-function getRecommendedAction(
-  reviewNeededCount: number,
-  introducedCount: number,
-  reinforcedCount: number,
-) {
+function getRecommendedAction(reviewNeededCount: number, completedCount: number, hitCount: number) {
   if (reviewNeededCount > 0) {
-    return `推荐继续复习 ${reviewNeededCount} 个待掌握词，优先处理刚刚标记为“模糊”的词卡。`;
+    return `推荐优先继续复习 ${reviewNeededCount} 个未完成目标词，下一局会优先带上它们。`;
   }
 
-  if (introducedCount > 0) {
-    return "本轮没有新增待复习词，可以立即再来一轮，用 1 到 2 题测验强化刚接触的新词。";
+  if (completedCount > 0) {
+    return "本局已完成全部目标词收集，可以再开一局新目标，并用 1 到 2 题测验巩固记忆。";
   }
 
-  if (reinforcedCount > 0) {
-    return "本轮以巩固复习为主，可以明天继续处理到期词，或者切换到更高难度词包。";
+  if (hitCount > 0) {
+    return "本局已命中部分目标词，但收集仍不够稳定，建议马上继续复习同一组词。";
   }
 
-  return "今天的训练量较轻，建议回到首页重新开始一轮，保持连续记忆。";
+  return "这一局没有命中目标词，建议直接再来一局，优先清理包含目标词的连块。";
 }
 
 export function buildSessionResult(options: {
   dateKey: string;
   packId: string;
-  introducedWordIds: string[];
-  cardResults: VocabularySessionCardResult[];
+  score: number;
+  removedBlockCount: number;
+  targetResults: VocabularyTargetResult[];
   quizEnabled: boolean;
   maxQuestions?: number;
 }): VocabularySessionResult {
-  const introducedWordIdSet = new Set(options.introducedWordIds);
-  const reviewNeededWordIds = options.cardResults
-    .filter((result) => result.decision === "uncertain")
+  const hitTargetWordIds = options.targetResults
+    .filter((result) => result.hit)
     .map((result) => result.wordId);
-  const reinforcedWordIds = options.cardResults
-    .filter((result) => result.decision === "known" && !introducedWordIdSet.has(result.wordId))
+  const completedTargetWordIds = options.targetResults
+    .filter((result) => result.completed)
+    .map((result) => result.wordId);
+  const reviewNeededWordIds = options.targetResults
+    .filter((result) => !result.completed)
     .map((result) => result.wordId);
   const quizWordIds =
     reviewNeededWordIds.length > 0
       ? reviewNeededWordIds
-      : options.introducedWordIds.length > 0
-        ? options.introducedWordIds
-        : options.cardResults.map((result) => result.wordId);
+      : completedTargetWordIds.length > 0
+        ? completedTargetWordIds
+        : hitTargetWordIds;
 
   return {
     dateKey: options.dateKey,
     packId: options.packId,
-    introducedWordIds: Array.from(introducedWordIdSet),
-    reinforcedWordIds: Array.from(new Set(reinforcedWordIds)),
-    reviewNeededWordIds: Array.from(new Set(reviewNeededWordIds)),
+    score: options.score,
+    removedBlockCount: options.removedBlockCount,
+    targetResults: options.targetResults,
+    hitTargetWordIds: uniqueWordIds(hitTargetWordIds),
+    completedTargetWordIds: uniqueWordIds(completedTargetWordIds),
+    reviewNeededWordIds: uniqueWordIds(reviewNeededWordIds),
     questions: options.quizEnabled
       ? buildReviewQuestions(quizWordIds, options.maxQuestions ?? 2)
       : [],
     recommendedAction: getRecommendedAction(
       reviewNeededWordIds.length,
-      introducedWordIdSet.size,
-      reinforcedWordIds.length,
+      completedTargetWordIds.length,
+      hitTargetWordIds.length,
     ),
   };
 }
