@@ -10,6 +10,7 @@ type HomeScreenProps = {
   dailyChallenge: DailyChallenge;
   dailyQuests: DailyQuest[];
   starRoadProgress: StarRoadProgress;
+  learningModeHref: string;
   onSelectMode: (modeId: GameModeId) => void;
   onStartMode: (modeId: GameModeId) => void;
   onStartDailyChallenge: () => void;
@@ -46,6 +47,7 @@ export function HomeScreen({
   dailyChallenge,
   dailyQuests,
   starRoadProgress,
+  learningModeHref,
   onSelectMode,
   onStartMode,
   onStartDailyChallenge,
@@ -91,6 +93,9 @@ export function HomeScreen({
         >
           {selectedMode.actionLabel}
         </button>
+        <a href={learningModeHref} className={styles.secondaryButton}>
+          学习模式
+        </a>
         <button type="button" className={styles.secondaryButton} onClick={onOpenSettings}>
           设置
         </button>

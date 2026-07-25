@@ -17,6 +17,7 @@ import { useStarPopApp } from "@/features/star-pop/hooks/useStarPopApp";
 import styles from "@/features/star-pop/components/GameShell.module.css";
 
 export function GameShell() {
+  const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   const [isObjectiveOpen, setIsObjectiveOpen] = useState(false);
   const openObjective = useCallback(() => setIsObjectiveOpen(true), []);
   const closeObjective = useCallback(() => setIsObjectiveOpen(false), []);
@@ -94,6 +95,7 @@ export function GameShell() {
             dailyChallenge={dailyChallenge}
             dailyQuests={dailyQuests}
             starRoadProgress={starRoadProgress}
+            learningModeHref={appBasePath ? `${appBasePath}/words/` : "/words/"}
             onSelectMode={updateSelectedMode}
             onStartMode={startGame}
             onStartDailyChallenge={startDailyChallenge}

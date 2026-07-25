@@ -1,0 +1,76 @@
+.page {
+  min-height: 100vh;
+  padding:
+    max(20px, env(safe-area-inset-top))
+    20px
+    max(20px, env(safe-area-inset-bottom));
+}
+
+.screen {
+  width: min(100%, 920px);
+  margin: 0 auto;
+}
+
+.fallback {
+  display: grid;
+  justify-items: center;
+}
+
+.actions {
+  display: grid;
+  gap: 12px;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 18px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.98rem;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.primaryButton {
+  color: var(--theme-primary-text);
+  background: linear-gradient(135deg, var(--theme-primary-start) 0%, var(--theme-primary-end) 100%);
+  border: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 14px 30px var(--theme-primary-shadow);
+}
+
+.secondaryButton {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.primaryButton:hover,
+.secondaryButton:hover {
+  transform: translateY(-1px);
+}
+
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (min-width: 768px) {
+  .page {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
