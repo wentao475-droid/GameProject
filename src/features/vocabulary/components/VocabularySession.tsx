@@ -1,15 +1,20 @@
 "use client";
 
 import { VocabularyBoard } from "@/features/vocabulary/components/VocabularyBoard";
+import { SESSION_TARGET_WORD_COUNT } from "@/features/vocabulary/lib/vocabularyGame";
 import styles from "@/features/vocabulary/components/VocabularySession.module.css";
 import type { Board, Position } from "@/features/star-pop/types/game";
 
 type SessionTarget = {
   id: string;
   word: string;
+  pronunciation: string;
   meaning: string;
-  collectedCount: number;
+  parts: string[];
+  familyHint: string;
+  formedCount: number;
   targetCount: number;
+  isActive: boolean;
 };
 
 type VocabularySessionProps = {
@@ -31,6 +36,24 @@ type VocabularySessionProps = {
   previewCount: number;
   score: number;
   remainingBlocks: number;
+  focusedWordCard: {
+    wordId: string;
+    word: string;
+    meaning: string;
+    pronunciation: string;
+    example: string;
+    familyHint: string;
+    isCurrentTarget: boolean;
+  } | null;
+  recentFormedWordCards: Array<{
+    wordId: string;
+    word: string;
+    meaning: string;
+    pronunciation: string;
+    example: string;
+    familyHint: string;
+    isCurrentTarget: boolean;
+  }>;
   disabled: boolean;
   onHover: (position: Position) => void;
   onLeave: () => void;
@@ -48,6 +71,8 @@ export function VocabularySession({
   previewCount,
   score,
   remainingBlocks,
+  focusedWordCard,
+  recentFormedWordCards,
   disabled,
   onHover,
   onLeave,
@@ -59,9 +84,10 @@ export function VocabularySession({
       <header className={styles.hero}>
         <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Session</p>
-          <h1 className={styles.title}>目标词收集对局</h1>
+          <h1 className={styles.title}>目标字拼字对局</h1>
           <p className={styles.subtitle}>
-            观察棋盘里的英文标签，尽量优先消掉带有目标词的同色连块。只要一组里包含目标词，就会累计顶部进度。
+            每局只追踪 {SESSION_TARGET_WORD_COUNT}
+            个目标字。一次消除里如果刚好凑齐某个字需要的偏旁和部件，就会立即点亮这张字卡。
           </p>
         </div>
         <div className={styles.progressBadge}>
@@ -72,27 +98,36 @@ export function VocabularySession({
         </div>
       </header>
 
-      <section className={styles.goalGrid} aria-label="当前目标词">
+      <section className={styles.goalGrid} aria-label="当前目标字">
         {targets.map((target) => {
-          const completed = target.collectedCount >= target.targetCount;
+          const completed = target.formedCount >= target.targetCount;
+          const cardClassName = [
+            styles.goalCard,
+            completed ? styles.goalCardComplete : "",
+            target.isActive ? styles.goalCardActive : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
 
           return (
-            <article
-              key={target.id}
-              className={`${styles.goalCard} ${completed ? styles.goalCardComplete : ""}`}
-            >
+            <article key={target.id} className={cardClassName}>
               <div className={styles.goalHeader}>
-                <span className={styles.goalMeaning}>{target.meaning}</span>
+                <span className={styles.goalMeaning}>{target.pronunciation}</span>
                 <span className={styles.goalProgress}>
-                  {Math.min(target.collectedCount, target.targetCount)}/{target.targetCount}
+                  {Math.min(target.formedCount, target.targetCount)}/{target.targetCount}
                 </span>
               </div>
               <strong className={styles.goalWord}>{target.word}</strong>
+              <p className={styles.goalState}>{target.parts.join(" + ")}</p>
+              <p className={styles.goalState}>{target.meaning}</p>
+              <p className={styles.goalState}>
+                {completed ? "已经拼出来了" : target.isActive ? target.familyHint : "找到对应部件就能成字"}
+              </p>
               <div className={styles.goalTrack} aria-hidden="true">
                 <span
                   className={`${styles.goalFill} ${completed ? styles.goalFillComplete : ""}`}
                   style={{
-                    width: `${Math.min((target.collectedCount / target.targetCount) * 100, 100)}%`,
+                    width: `${Math.min((target.formedCount / target.targetCount) * 100, 100)}%`,
                   }}
                 />
               </div>
@@ -110,6 +145,8 @@ export function VocabularySession({
         previewCount={previewCount}
         score={score}
         remainingBlocks={remainingBlocks}
+        focusedWordCard={focusedWordCard}
+        recentFormedWordCards={recentFormedWordCards}
         onHover={onHover}
         onLeave={onLeave}
         onClick={onClick}

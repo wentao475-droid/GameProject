@@ -1,14 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GAME_CONFIG } from "@/features/star-pop/config/gameConfig";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { findConnectedGroup } from "@/features/star-pop/lib/findConnectedGroup";
-import { getRemainingBlockCount } from "@/features/star-pop/lib/getRemainingBlockCount";
-import { markRemovingGroup } from "@/features/star-pop/lib/markRemovingGroup";
-import { resetBoardAnimations } from "@/features/star-pop/lib/boardUtils";
 import { resolveTurn } from "@/features/star-pop/lib/resolveTurn";
-import type { Board, GameStatus, Position } from "@/features/star-pop/types/game";
-import { createVocabularyBoard } from "@/features/vocabulary/lib/createVocabularyBoard";
+import type { Block, Board, Position, TurnResult } from "@/features/star-pop/types/game";
+import {
+  createVocabularyBoard,
+  VOCABULARY_BOARD_COLS,
+  VOCABULARY_BOARD_ROWS,
+} from "@/features/vocabulary/lib/createVocabularyBoard";
+import {
+  getCurrentTargetBonus,
+  getCurrentTargetWordId,
+  getFormedWords,
+  getFormedTargetWordIds,
+} from "@/features/vocabulary/lib/vocabularyGame";
 import type { WordEntry } from "@/features/vocabulary/types/words";
 
 export type VocabularyGameConfig = {
@@ -21,7 +27,7 @@ export type VocabularyGameCompletion = {
   sessionId: number;
   score: number;
   removedBlockCount: number;
-  collectedCountsByWordId: Record<string, number>;
+  formedCountsByWordId: Record<string, number>;
 };
 
 type TurnFeedback = {
@@ -35,15 +41,32 @@ type TurnFeedback = {
   };
 };
 
+type FocusedWordCard = {
+  wordId: string;
+  word: string;
+  meaning: string;
+  pronunciation: string;
+  example: string;
+  familyHint: string;
+  isCurrentTarget: boolean;
+};
+
 function createEmptyBoard(): Board {
-  return Array.from({ length: GAME_CONFIG.rows }, () =>
-    Array.from({ length: GAME_CONFIG.cols }, () => null),
+  return Array.from({ length: VOCABULARY_BOARD_ROWS }, () =>
+    Array.from({ length: VOCABULARY_BOARD_COLS }, () => null),
   );
+}
+
+function getRemainingBlockCount(board: Board) {
+  return board.flat().filter(Boolean).length;
 }
 
 function getGroupAnchor(group: Position[]) {
   if (group.length === 0) {
-    return { row: 4.5, col: 4.5 };
+    return {
+      row: VOCABULARY_BOARD_ROWS / 2 - 0.5,
+      col: VOCABULARY_BOARD_COLS / 2 - 0.5,
+    };
   }
 
   const total = group.reduce(
@@ -60,55 +83,38 @@ function getGroupAnchor(group: Position[]) {
   };
 }
 
-export function useVocabularyGame(options?: {
-  animationEnabled?: boolean;
-  vibrationEnabled?: boolean;
-}) {
-  const animationEnabled = options?.animationEnabled ?? true;
-  const vibrationEnabled = options?.vibrationEnabled ?? true;
+const ANIMATION_DURATION_MS = 280;
+const INVALID_FEEDBACK_DURATION_MS = 380;
+
+export function useVocabularyGame() {
   const [board, setBoard] = useState<Board>(() => createEmptyBoard());
-  const [status, setStatus] = useState<GameStatus>("ready");
+  const [status, setStatus] = useState<"ready" | "animating" | "game-over">("ready");
   const [selectedGroup, setSelectedGroup] = useState<Position[]>([]);
   const [invalidCellId, setInvalidCellId] = useState<string | null>(null);
   const [turnFeedback, setTurnFeedback] = useState<TurnFeedback | null>(null);
   const [score, setScore] = useState(0);
   const [removedBlockCount, setRemovedBlockCount] = useState(0);
-  const [collectedCountsByWordId, setCollectedCountsByWordId] = useState<Record<string, number>>({});
+  const [formedCountsByWordId, setFormedCountsByWordId] = useState<Record<string, number>>({});
   const [sessionId, setSessionId] = useState<number | null>(null);
-  const [targetWordIds, setTargetWordIds] = useState<string[]>([]);
+  const [targetWords, setTargetWords] = useState<WordEntry[]>([]);
+  const [boardWords, setBoardWords] = useState<WordEntry[]>([]);
   const [completion, setCompletion] = useState<VocabularyGameCompletion | null>(null);
-  const timersRef = useRef<number[]>([]);
-  const feedbackIdRef = useRef(0);
+  const [focusedWordCard, setFocusedWordCard] = useState<FocusedWordCard | null>(null);
+  const [recentFormedWordCards, setRecentFormedWordCards] = useState<FocusedWordCard[]>([]);
 
   const remainingBlocks = useMemo(() => getRemainingBlockCount(board), [board]);
-  const targetWordIdSet = useMemo(() => new Set(targetWordIds), [targetWordIds]);
-
-  const clearTimers = useCallback(() => {
-    timersRef.current.forEach((timer) => window.clearTimeout(timer));
-    timersRef.current = [];
-  }, []);
-
-  useEffect(() => clearTimers, [clearTimers]);
-
-  const schedule = useCallback((callback: () => void, timeout: number) => {
-    const timer = window.setTimeout(callback, timeout);
-    timersRef.current.push(timer);
-    return timer;
-  }, []);
-
-  const vibrate = useCallback(
-    (duration: number) => {
-      if (!vibrationEnabled || typeof navigator === "undefined" || !navigator.vibrate) {
-        return;
-      }
-
-      navigator.vibrate(duration);
-    },
-    [vibrationEnabled],
+  const currentTargetWordId = useMemo(
+    () => getCurrentTargetWordId(targetWords, formedCountsByWordId),
+    [formedCountsByWordId, targetWords],
   );
 
+  useEffect(() => {
+    if (status !== "ready") {
+      return;
+    }
+  }, [status]);
+
   const resetGame = useCallback(() => {
-    clearTimers();
     setBoard(createEmptyBoard());
     setStatus("ready");
     setSelectedGroup([]);
@@ -116,34 +122,36 @@ export function useVocabularyGame(options?: {
     setTurnFeedback(null);
     setScore(0);
     setRemovedBlockCount(0);
-    setCollectedCountsByWordId({});
+    setFormedCountsByWordId({});
     setSessionId(null);
-    setTargetWordIds([]);
+    setTargetWords([]);
+    setBoardWords([]);
     setCompletion(null);
-  }, [clearTimers]);
+    setFocusedWordCard(null);
+    setRecentFormedWordCards([]);
+  }, []);
 
-  const startGame = useCallback(
-    (config: VocabularyGameConfig) => {
-      clearTimers();
-      setBoard(
-        createVocabularyBoard({
-          targetWords: config.targetWords,
-          fillerWords: config.boardWords,
-        }),
-      );
-      setStatus("ready");
-      setSelectedGroup([]);
-      setInvalidCellId(null);
-      setTurnFeedback(null);
-      setScore(0);
-      setRemovedBlockCount(0);
-      setCollectedCountsByWordId({});
-      setSessionId(config.sessionId);
-      setTargetWordIds(config.targetWords.map((word) => word.id));
-      setCompletion(null);
-    },
-    [clearTimers],
-  );
+  const startGame = useCallback((config: VocabularyGameConfig) => {
+    setBoard(
+      createVocabularyBoard({
+        targetWords: config.targetWords,
+        fillerWords: config.boardWords,
+      }),
+    );
+    setStatus("ready");
+    setSelectedGroup([]);
+    setInvalidCellId(null);
+    setTurnFeedback(null);
+    setScore(0);
+    setRemovedBlockCount(0);
+    setFormedCountsByWordId({});
+    setSessionId(config.sessionId);
+    setTargetWords(config.targetWords);
+    setBoardWords(config.boardWords);
+    setCompletion(null);
+    setFocusedWordCard(null);
+    setRecentFormedWordCards([]);
+  }, []);
 
   const clearCompletion = useCallback(() => {
     setCompletion(null);
@@ -155,7 +163,34 @@ export function useVocabularyGame(options?: {
     }
 
     setSelectedGroup([]);
+    setFocusedWordCard(null);
   }, [status]);
+
+  const buildFocusedCard = useCallback(
+    (block: Block | null) => {
+      if (
+        !block?.wordId ||
+        !block.fullLabel ||
+        !block.meaning ||
+        !block.pronunciation ||
+        !block.example ||
+        !block.familyHint
+      ) {
+        return null;
+      }
+
+      return {
+        wordId: block.wordId,
+        word: block.fullLabel,
+        meaning: block.meaning,
+        pronunciation: block.pronunciation,
+        example: block.example,
+        familyHint: block.familyHint,
+        isCurrentTarget: currentTargetWordId === block.wordId,
+      };
+    },
+    [currentTargetWordId],
+  );
 
   const handleBlockHover = useCallback(
     (position: Position) => {
@@ -166,12 +201,15 @@ export function useVocabularyGame(options?: {
       const hoveredBlock = board[position.row]?.[position.col];
       if (!hoveredBlock) {
         setSelectedGroup([]);
+        setFocusedWordCard(null);
         return;
       }
 
-      setSelectedGroup(findConnectedGroup(board, position));
+      const group = findConnectedGroup(board, position);
+      setSelectedGroup(group.length >= 2 ? group : []);
+      setFocusedWordCard(buildFocusedCard(hoveredBlock));
     },
-    [board, status],
+    [board, buildFocusedCard, status],
   );
 
   const handleBlockClick = useCallback(
@@ -188,119 +226,102 @@ export function useVocabularyGame(options?: {
       const result = resolveTurn(board, position);
 
       if (result.kind === "invalid") {
-        clearTimers();
         setSelectedGroup(result.group);
+        setFocusedWordCard(buildFocusedCard(clickedBlock));
         setInvalidCellId(clickedBlock.id);
-        feedbackIdRef.current += 1;
-        const feedbackId = feedbackIdRef.current;
         setTurnFeedback({
           kind: "invalid",
           label: "至少连接 2 块",
           scoreDelta: 0,
-          id: feedbackId,
+          id: Date.now(),
           anchor: {
             row: position.row,
             col: position.col,
           },
         });
-        vibrate(10);
-        schedule(() => {
+        window.setTimeout(() => {
           setInvalidCellId((current) => (current === clickedBlock.id ? null : current));
-          setSelectedGroup((current) =>
-            current.length === 1 &&
-            current[0]?.row === position.row &&
-            current[0]?.col === position.col
-              ? []
-              : current,
-          );
-        }, animationEnabled ? GAME_CONFIG.invalidPulseMs : 0);
-        schedule(() => {
-          setTurnFeedback((current) => (current?.id === feedbackId ? null : current));
-        }, GAME_CONFIG.turnFeedbackMs);
+          setTurnFeedback((current) => (current?.kind === "invalid" ? null : current));
+        }, INVALID_FEEDBACK_DURATION_MS);
         return;
       }
 
-      clearTimers();
-      setStatus("animating");
-      vibrate(18);
+      const removedBlocks = result.removedGroup
+        .map((cell) => board[cell.row]?.[cell.col] ?? null)
+        .filter((block): block is Block => block !== null);
+      const formedTargetWordIds = getFormedTargetWordIds(
+        removedBlocks.map((block) => block.label ?? "").filter(Boolean),
+        targetWords,
+      );
+      const formedWords = getFormedWords(
+        removedBlocks.map((block) => block.label ?? "").filter(Boolean),
+        boardWords,
+      );
+      const nextFormedCountsByWordId = { ...formedCountsByWordId };
 
-      const collectedDeltaByWordId = result.removedGroup.reduce<Record<string, number>>((accumulator, cell) => {
-        const wordId = board[cell.row]?.[cell.col]?.wordId;
-
-        if (!wordId || !targetWordIdSet.has(wordId)) {
-          return accumulator;
-        }
-
-        return {
-          ...accumulator,
-          [wordId]: (accumulator[wordId] ?? 0) + 1,
-        };
-      }, {});
-      const nextCollectedCounts = { ...collectedCountsByWordId };
-
-      Object.entries(collectedDeltaByWordId).forEach(([wordId, collectedCount]) => {
-        nextCollectedCounts[wordId] = (nextCollectedCounts[wordId] ?? 0) + collectedCount;
+      formedTargetWordIds.forEach((wordId) => {
+        nextFormedCountsByWordId[wordId] = 1;
       });
 
-      const nextScore = score + result.scoreDelta;
+      const currentTargetBonus = getCurrentTargetBonus(currentTargetWordId, nextFormedCountsByWordId);
+      const formedBonus = formedTargetWordIds.length * 120;
+      const nextScore = score + result.scoreDelta + currentTargetBonus + formedBonus;
       const nextRemovedBlockCount = removedBlockCount + result.removedGroup.length;
 
-      feedbackIdRef.current += 1;
-      const feedbackId = feedbackIdRef.current;
+      setStatus(result.isGameOver ? "game-over" : "animating");
+      setSelectedGroup(result.removedGroup);
+      setBoard(result.board);
+      setScore(nextScore);
+      setRemovedBlockCount(nextRemovedBlockCount);
+      setFormedCountsByWordId(nextFormedCountsByWordId);
+      setFocusedWordCard(buildFocusedCard(clickedBlock));
+      setRecentFormedWordCards(
+        formedWords.map((word) => ({
+          wordId: word.id,
+          word: word.word,
+          meaning: word.meaning,
+          pronunciation: word.pronunciation,
+          example: word.example,
+          familyHint: word.familyHint,
+          isCurrentTarget: targetWords.some((targetWord) => targetWord.id === word.id),
+        })),
+      );
       setTurnFeedback({
         kind: "valid",
-        label: `${result.removedGroup.length} 连消`,
-        scoreDelta: result.scoreDelta,
-        id: feedbackId,
+        label:
+          formedWords.length > 0
+            ? `拼出 ${formedWords.map((word) => word.word).join("、")}`
+            : `消除 ${result.removedGroup.length} 块`,
+        scoreDelta: result.scoreDelta + currentTargetBonus + formedBonus,
+        id: Date.now(),
         anchor: getGroupAnchor(result.removedGroup),
       });
-      setSelectedGroup(result.removedGroup);
-      setBoard(animationEnabled ? markRemovingGroup(board, result.removedGroup) : result.board);
 
-      schedule(() => {
-        setTurnFeedback((current) => (current?.id === feedbackId ? null : current));
-      }, GAME_CONFIG.turnFeedbackMs);
-
-      schedule(() => {
-        setBoard(result.board);
-        setScore(nextScore);
-        setRemovedBlockCount(nextRemovedBlockCount);
-        setCollectedCountsByWordId(nextCollectedCounts);
+      window.setTimeout(() => {
         setSelectedGroup([]);
-
-        schedule(() => {
-          const settledBoard = resetBoardAnimations(result.board);
-          setBoard(settledBoard);
-
-          if (!result.isGameOver) {
-            setStatus("ready");
-            return;
-          }
-
-          setStatus("game-over");
-          if (sessionId !== null) {
-            setCompletion({
-              sessionId,
-              score: nextScore,
-              removedBlockCount: nextRemovedBlockCount,
-              collectedCountsByWordId: nextCollectedCounts,
-            });
-          }
-        }, animationEnabled ? GAME_CONFIG.settleAnimationMs : 0);
-      }, animationEnabled ? GAME_CONFIG.removeAnimationMs : 0);
+        setStatus(result.isGameOver ? "game-over" : "ready");
+        setTurnFeedback(null);
+        if (result.isGameOver && sessionId !== null) {
+          setCompletion({
+            sessionId,
+            score: nextScore,
+            removedBlockCount: nextRemovedBlockCount,
+            formedCountsByWordId: nextFormedCountsByWordId,
+          });
+        }
+      }, ANIMATION_DURATION_MS);
     },
     [
-      animationEnabled,
       board,
-      clearTimers,
-      collectedCountsByWordId,
+      buildFocusedCard,
+      currentTargetWordId,
+      boardWords,
+      formedCountsByWordId,
       removedBlockCount,
-      schedule,
       score,
       sessionId,
       status,
-      targetWordIdSet,
-      vibrate,
+      targetWords,
     ],
   );
 
@@ -310,11 +331,14 @@ export function useVocabularyGame(options?: {
     score,
     remainingBlocks,
     removedBlockCount,
-    collectedCountsByWordId,
+    formedCountsByWordId,
+    currentTargetWordId,
     selectedGroup,
     invalidCellId,
     turnFeedback,
     completion,
+    focusedWordCard,
+    recentFormedWordCards,
     isAnimating: status === "animating",
     previewCount: selectedGroup.length,
     startGame,

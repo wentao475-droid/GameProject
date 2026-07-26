@@ -19,6 +19,7 @@ type GameBoardProps = {
     };
   } | null;
   disabled: boolean;
+  surface?: "panel" | "flat";
   onHover: (position: Position) => void;
   onLeave: () => void;
   onClick: (position: Position) => void;
@@ -30,24 +31,30 @@ export function GameBoard({
   invalidCellId,
   turnFeedback,
   disabled,
+  surface = "panel",
   onHover,
   onLeave,
   onClick,
 }: GameBoardProps) {
   const selectedKeys = new Set(selectedGroup.map(positionKey));
+  const rowCount = board.length || 1;
+  const colCount = board[0]?.length || 1;
   const feedbackStyle = turnFeedback
     ? ({
-        "--feedback-left": `${((turnFeedback.anchor.col + 0.5) / 10) * 100}%`,
-        "--feedback-top": `${((turnFeedback.anchor.row + 0.5) / 10) * 100}%`,
+        "--feedback-left": `${((turnFeedback.anchor.col + 0.5) / colCount) * 100}%`,
+        "--feedback-top": `${((turnFeedback.anchor.row + 0.5) / rowCount) * 100}%`,
       } as CSSProperties)
     : undefined;
 
   return (
-    <section className={styles.boardPanel}>
+    <section
+      className={`${styles.boardPanel} ${surface === "flat" ? styles.boardPanelFlat : ""}`}
+    >
       <div
-        className={styles.board}
+        className={`${styles.board} ${surface === "flat" ? styles.boardFlat : ""}`}
         role="grid"
-        aria-label="10 x 10 星块棋盘"
+        aria-label={`${rowCount} x ${colCount} 星块棋盘`}
+        style={{ "--board-cols": String(colCount) } as CSSProperties}
         onMouseLeave={onLeave}
       >
         {board.flatMap((row, rowIndex) =>

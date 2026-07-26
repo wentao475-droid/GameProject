@@ -1,14 +1,11 @@
-export type WordDifficultyBand = "gaokao-plus" | "cet4";
-
-export type VocabularyStage = "new" | "learning" | "familiar" | "mastered";
-
 export type WordEntry = {
   id: string;
-  word: string;
-  meaning: string;
-  partOfSpeech: string;
-  example: string;
-  difficultyBand: WordDifficultyBand;
+  word: string; // 完整汉字
+  meaning: string; // 儿童化解释
+  pronunciation: string; // 拼音
+  example: string; // 例词或例句
+  parts: string[]; // 偏旁/部件
+  familyHint: string; // 偏旁义类提示
   packId: string;
 };
 
@@ -16,20 +13,12 @@ export type WordPack = {
   id: string;
   title: string;
   description: string;
-  difficultyLabel: string;
+  ageLabel: string;
   wordIds: string[];
 };
 
-export type ReviewQuestion = {
-  id: string;
-  wordId: string;
-  prompt: string;
-  choices: string[];
-  answer: string;
-};
-
 export type VocabularyDailyTask = {
-  id: "daily-target" | "review-queue" | "quick-quiz";
+  id: "daily-session" | "daily-target" | "daily-discovery";
   title: string;
   description: string;
   progress: number;
@@ -39,8 +28,6 @@ export type VocabularyDailyTask = {
 
 export type VocabularySettingsPatch = {
   dailyWordTarget?: number;
-  showMeaningHint?: boolean;
-  quizEnabled?: boolean;
 };
 
 export type VocabularyTargetResult = {
@@ -49,10 +36,6 @@ export type VocabularyTargetResult = {
   targetCount: number;
   hit: boolean;
   completed: boolean;
-  wasNew: boolean;
-  wasReview: boolean;
-  previousStage: VocabularyStage;
-  nextStage: VocabularyStage;
 };
 
 export type VocabularySessionResult = {
@@ -63,7 +46,6 @@ export type VocabularySessionResult = {
   targetResults: VocabularyTargetResult[];
   hitTargetWordIds: string[];
   completedTargetWordIds: string[];
-  reviewNeededWordIds: string[];
-  questions: ReviewQuestion[];
+  learnedCharacterIds: string[];
   recommendedAction: string;
 };

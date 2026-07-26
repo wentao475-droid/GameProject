@@ -11,6 +11,11 @@ export type Block = {
   dropDistance: number;
   shiftDistance: number;
   label?: string;
+  fullLabel?: string;
+  meaning?: string;
+  pronunciation?: string;
+  example?: string;
+  familyHint?: string;
   wordId?: string;
 };
 

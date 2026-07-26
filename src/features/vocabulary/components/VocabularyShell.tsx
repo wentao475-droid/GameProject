@@ -1,6 +1,7 @@
 "use client";
 
 import { VocabularyHome } from "@/features/vocabulary/components/VocabularyHome";
+import { VocabularyPreviewModal } from "@/features/vocabulary/components/VocabularyPreviewModal";
 import { VocabularyResult } from "@/features/vocabulary/components/VocabularyResult";
 import { VocabularySession } from "@/features/vocabulary/components/VocabularySession";
 import { useVocabularyApp } from "@/features/vocabulary/hooks/useVocabularyApp";
@@ -15,15 +16,14 @@ export function VocabularyShell() {
     dailyTasks,
     homeHref,
     result,
-    quizAnswersByQuestionId,
-    quizCompletedCount,
-    quizCorrectCount,
+    sessionPreviewTargets,
     sessionTargets,
     sessionCompletedTargetCount,
     game,
     startSession,
     continueReview,
-    answerQuestion,
+    cancelSessionPreview,
+    confirmSessionPreview,
     updateSettings,
     goHome,
   } = useVocabularyApp();
@@ -56,6 +56,8 @@ export function VocabularyShell() {
             previewCount={game.previewCount}
             score={game.score}
             remainingBlocks={game.remainingBlocks}
+            focusedWordCard={game.focusedWordCard}
+            recentFormedWordCards={game.recentFormedWordCards}
             disabled={game.isAnimating}
             onHover={game.handleBlockHover}
             onLeave={game.clearPreview}
@@ -67,10 +69,6 @@ export function VocabularyShell() {
             result={result}
             dailyTasks={dailyTasks}
             homeHref={homeHref}
-            quizAnswersByQuestionId={quizAnswersByQuestionId}
-            quizCompletedCount={quizCompletedCount}
-            quizCorrectCount={quizCorrectCount}
-            onAnswerQuestion={answerQuestion}
             onContinueReview={continueReview}
             onGoHome={goHome}
           />
@@ -82,6 +80,12 @@ export function VocabularyShell() {
           </section>
         )}
       </section>
+      <VocabularyPreviewModal
+        isOpen={sessionPreviewTargets.length > 0}
+        targets={sessionPreviewTargets}
+        onClose={cancelSessionPreview}
+        onConfirm={confirmSessionPreview}
+      />
     </main>
   );
 }

@@ -1,9 +1,13 @@
-import { createBoard } from "@/features/star-pop/lib/createBoard";
+import { createBlock, resetBlockIds } from "@/features/star-pop/lib/blockFactory";
 import { findConnectedGroup } from "@/features/star-pop/lib/findConnectedGroup";
+import { hasAvailableMove } from "@/features/star-pop/lib/hasAvailableMove";
 import { positionKey } from "@/features/star-pop/lib/boardUtils";
-import type { Board } from "@/features/star-pop/types/game";
-import { TARGET_WORD_COLLECTION_GOAL } from "@/features/vocabulary/lib/vocabularyGame";
+import type { BlockColor, Board } from "@/features/star-pop/types/game";
+import { BLOCK_COLORS } from "@/features/star-pop/config/gameConfig";
 import type { WordEntry } from "@/features/vocabulary/types/words";
+
+export const VOCABULARY_BOARD_ROWS = 8;
+export const VOCABULARY_BOARD_COLS = 8;
 
 function shuffle<T>(items: T[], random: () => number) {
   const nextItems = [...items];
@@ -22,12 +26,55 @@ function getBoardPositions(board: Board) {
   );
 }
 
-function buildTargetAssignments(targetWords: WordEntry[], random: () => number) {
-  const repeatedTargets = targetWords.flatMap((word) =>
-    Array.from({ length: TARGET_WORD_COLLECTION_GOAL }, () => word),
-  );
+function getRemovableGroups(board: Board) {
+  const visited = new Set<string>();
+  const groups = [];
 
-  return shuffle(repeatedTargets, random);
+  for (const position of getBoardPositions(board)) {
+    const key = positionKey(position);
+    if (visited.has(key)) {
+      continue;
+    }
+
+    const group = findConnectedGroup(board, position);
+    group.forEach((member) => visited.add(positionKey(member)));
+
+    if (group.length >= 2) {
+      groups.push(group);
+    }
+  }
+
+  return groups;
+}
+
+function pickRandomColor(random: () => number): BlockColor {
+  const index = Math.floor(random() * BLOCK_COLORS.length);
+  return BLOCK_COLORS[index]!;
+}
+
+function buildRandomBoard(random: () => number): Board {
+  return Array.from({ length: VOCABULARY_BOARD_ROWS }, (_, row) =>
+    Array.from({ length: VOCABULARY_BOARD_COLS }, (_, col) =>
+      createBlock(row, col, pickRandomColor(random)),
+    ),
+  );
+}
+
+function buildPlayableBoard(random: () => number) {
+  resetBlockIds();
+
+  while (true) {
+    const candidate = buildRandomBoard(random);
+    if (hasAvailableMove(candidate)) {
+      return candidate;
+    }
+
+    resetBlockIds();
+  }
+}
+
+function getFillerParts(words: WordEntry[]) {
+  return Array.from(new Set(words.flatMap((word) => word.parts)));
 }
 
 export function createVocabularyBoard(options: {
@@ -36,30 +83,52 @@ export function createVocabularyBoard(options: {
   random?: () => number;
 }) {
   const random = options.random ?? Math.random;
-  const baseBoard = createBoard(random);
-  const targetWordIdSet = new Set(options.targetWords.map((word) => word.id));
-  const nonTargetFillerWords = options.fillerWords.filter((word) => !targetWordIdSet.has(word.id));
-  const fillerWords = nonTargetFillerWords.length > 0 ? nonTargetFillerWords : options.targetWords;
-  const removablePositions = shuffle(
-    getBoardPositions(baseBoard).filter((position) => findConnectedGroup(baseBoard, position).length >= 2),
+  const baseBoard = buildPlayableBoard(random);
+  const fillerParts = getFillerParts(options.fillerWords.length > 0 ? options.fillerWords : options.targetWords);
+  const targetGroups = shuffle(
+    getRemovableGroups(baseBoard).filter((group) =>
+      options.targetWords.some((word) => group.length >= word.parts.length),
+    ),
     random,
   );
-  const removablePositionKeySet = new Set(removablePositions.map((position) => positionKey(position)));
-  const allPositions = shuffle(getBoardPositions(baseBoard), random).filter(
-    (position) => !removablePositionKeySet.has(positionKey(position)),
-  );
-  const assignmentPositions = [...removablePositions, ...allPositions];
-  const assignments = new Map<string, WordEntry>();
-
-  buildTargetAssignments(options.targetWords, random).forEach((word, index) => {
-    const position = assignmentPositions[index];
-
-    if (position) {
-      assignments.set(positionKey(position), word);
+  const occupiedPositionKeys = new Set<string>();
+  const targetAssignments = new Map<
+    string,
+    {
+      label: string;
+      word: WordEntry;
     }
+  >();
+
+  options.targetWords.forEach((word, targetIndex) => {
+    const group = targetGroups[targetIndex];
+
+    if (!group) {
+      return;
+    }
+
+    word.parts.forEach((part, partIndex) => {
+      const position = group[partIndex];
+      if (!position) {
+        return;
+      }
+
+      const key = positionKey(position);
+      occupiedPositionKeys.add(key);
+      targetAssignments.set(key, {
+        label: part,
+        word,
+      });
+    });
   });
 
-  let fillerIndex = 0;
+  const fillerPositions = shuffle(getBoardPositions(baseBoard), random).filter(
+    (position) => !occupiedPositionKeys.has(positionKey(position)),
+  );
+  const fillerAssignments = new Map<string, string>();
+  fillerPositions.forEach((position, index) => {
+    fillerAssignments.set(positionKey(position), fillerParts[index % fillerParts.length] ?? "口");
+  });
 
   return baseBoard.map((row, rowIndex) =>
     row.map((block, colIndex) => {
@@ -67,14 +136,19 @@ export function createVocabularyBoard(options: {
         return null;
       }
 
-      const assignedWord =
-        assignments.get(positionKey({ row: rowIndex, col: colIndex })) ??
-        fillerWords[fillerIndex++ % fillerWords.length]!;
+      const key = positionKey({ row: rowIndex, col: colIndex });
+      const assignedTarget = targetAssignments.get(key);
+      const label = assignedTarget?.label ?? fillerAssignments.get(key) ?? "口";
 
       return {
         ...block,
-        label: assignedWord.word,
-        wordId: assignedWord.id,
+        label,
+        fullLabel: assignedTarget?.word.word,
+        meaning: assignedTarget?.word.meaning,
+        pronunciation: assignedTarget?.word.pronunciation,
+        example: assignedTarget?.word.example,
+        familyHint: assignedTarget?.word.familyHint,
+        wordId: assignedTarget?.word.id,
       };
     }),
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getWordEntry, getWordsByPack } from "@/features/vocabulary/lib/wordBank";
+import { getWordsByPack } from "@/features/vocabulary/lib/wordBank";
 import {
   readVocabularyProfile,
   writeVocabularyProfile,
@@ -11,13 +11,8 @@ import {
   buildSessionResult,
   buildVocabularyDailyTasks,
   buildTodayWordPack,
-  getVocabularyDailyActivity,
-  getWordProgress,
   getReviewQueueCount,
-  recordVocabularyQuizAnswer,
-  recordVocabularySessionCompletion,
   recordVocabularyTargetResults,
-  updateWordProgress,
   type VocabularyProfile,
   type TodayVocabularyPack,
 } from "@/features/vocabulary/lib/vocabularyProgress";
@@ -28,24 +23,16 @@ import {
 import type {
   VocabularySettingsPatch,
   VocabularySessionResult,
-  VocabularyTargetResult,
   WordEntry,
 } from "@/features/vocabulary/types/words";
 
 export type VocabularyScreen = "home" | "session" | "result";
 
-type ActiveSessionTarget = {
-  entry: WordEntry;
-  wasNew: boolean;
-  wasReview: boolean;
-  previousStage: VocabularyTargetResult["previousStage"];
-};
-
 type ActiveSession = {
   sessionId: number;
   packId: string;
   dateKey: string;
-  targets: ActiveSessionTarget[];
+  targets: WordEntry[];
 };
 
 function getGameHomeHref() {
@@ -58,7 +45,7 @@ export function useVocabularyApp() {
   const [profile, setProfile] = useState<VocabularyProfile | null>(null);
   const [result, setResult] = useState<VocabularySessionResult | null>(null);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
-  const [quizAnswersByQuestionId, setQuizAnswersByQuestionId] = useState<Record<string, string>>({});
+  const [pendingSession, setPendingSession] = useState<ActiveSession | null>(null);
   const nextSessionIdRef = useRef(1);
   const game = useVocabularyGame();
 
@@ -98,32 +85,52 @@ export function useVocabularyApp() {
     return buildVocabularyDailyTasks(profile, todayPack);
   }, [profile, todayPack]);
 
-  const quizQuestions = result?.questions ?? [];
-  const quizCompletedCount = quizQuestions.reduce((count, question) => {
-    return quizAnswersByQuestionId[question.id] ? count + 1 : count;
-  }, 0);
-  const quizCorrectCount = quizQuestions.reduce((count, question) => {
-    return quizAnswersByQuestionId[question.id] === question.answer ? count + 1 : count;
-  }, 0);
-
   const sessionTargets = useMemo(() => {
     if (!activeSession) {
       return [];
     }
 
     return activeSession.targets.map((target) => ({
-      ...target.entry,
-      collectedCount: Math.min(
-        game.collectedCountsByWordId[target.entry.id] ?? 0,
+      ...target,
+      formedCount: Math.min(
+        game.formedCountsByWordId[target.id] ?? 0,
         TARGET_WORD_COLLECTION_GOAL,
       ),
       targetCount: TARGET_WORD_COLLECTION_GOAL,
+      isActive: game.currentTargetWordId === target.id,
     }));
-  }, [activeSession, game.collectedCountsByWordId]);
+  }, [activeSession, game.currentTargetWordId, game.formedCountsByWordId]);
 
   const sessionCompletedTargetCount = sessionTargets.filter(
-    (target) => target.collectedCount >= target.targetCount,
+    (target) => target.formedCount >= target.targetCount,
   ).length;
+
+  const launchPreparedSession = useCallback(
+    (session: ActiveSession) => {
+      const startedAt = new Date().toISOString();
+
+      setProfile((currentProfile) => {
+        if (!currentProfile) {
+          return currentProfile;
+        }
+
+        return {
+          ...currentProfile,
+          lastStudiedAt: startedAt,
+        };
+      });
+      setResult(null);
+      setActiveSession(session);
+      setPendingSession(null);
+      game.startGame({
+        sessionId: session.sessionId,
+        targetWords: session.targets,
+        boardWords: getWordsByPack(session.packId),
+      });
+      setScreen("session");
+    },
+    [game],
+  );
 
   const startSessionWithWords = useCallback(
     (
@@ -132,7 +139,6 @@ export function useVocabularyApp() {
         packId?: string;
         dateKey?: string;
         priorityWordIds?: string[];
-        forcedReviewWordIds?: string[];
       },
     ) => {
       if (!profile || words.length === 0 || !todayPack) {
@@ -147,52 +153,17 @@ export function useVocabularyApp() {
         return;
       }
 
-      const startedAt = new Date().toISOString();
       const sessionId = nextSessionIdRef.current;
       nextSessionIdRef.current += 1;
-      const forcedReviewWordIdSet = new Set(options?.forcedReviewWordIds ?? []);
-      const todayNewWordIdSet = new Set(todayPack.newWords.map((word) => word.id));
-      const targets: ActiveSessionTarget[] = targetWords.map((entry) => {
-        const previousProgress = getWordProgress(profile, entry.id);
-        const wasReview =
-          forcedReviewWordIdSet.has(entry.id) ||
-          previousProgress.seenCount > 0 ||
-          previousProgress.stage !== "new";
 
-        return {
-          entry,
-          wasNew: todayNewWordIdSet.has(entry.id) && !forcedReviewWordIdSet.has(entry.id),
-          wasReview,
-          previousStage: previousProgress.stage,
-        };
-      });
-
-      setProfile((currentProfile) => {
-        if (!currentProfile) {
-          return currentProfile;
-        }
-
-        return {
-          ...currentProfile,
-          lastStudiedAt: startedAt,
-        };
-      });
-      setResult(null);
-      setQuizAnswersByQuestionId({});
-      setActiveSession({
+      setPendingSession({
         sessionId,
         packId: options?.packId ?? todayPack.pack.id,
         dateKey: options?.dateKey ?? todayPack.dateKey,
-        targets,
+        targets: targetWords,
       });
-      game.startGame({
-        sessionId,
-        targetWords,
-        boardWords: getWordsByPack(options?.packId ?? todayPack.pack.id),
-      });
-      setScreen("session");
     },
-    [game, profile, todayPack],
+    [profile, todayPack],
   );
 
   const startSession = useCallback(() => {
@@ -200,31 +171,30 @@ export function useVocabularyApp() {
       return;
     }
 
-    startSessionWithWords(todayPack.words, {
+    const candidateWords = [...todayPack.reviewWords, ...todayPack.newWords];
+    startSessionWithWords(candidateWords.length > 0 ? candidateWords : todayPack.words, {
       packId: todayPack.pack.id,
       dateKey: todayPack.dateKey,
-      forcedReviewWordIds: todayPack.reviewWords.map((word) => word.id),
+      priorityWordIds: todayPack.reviewWords.map((word) => word.id),
     });
   }, [startSessionWithWords, todayPack]);
 
   const continueReview = useCallback(() => {
-    if (!todayPack || !result) {
+    if (!result) {
       startSession();
       return;
     }
 
-    const reviewWords = result.reviewNeededWordIds
-      .map((wordId) => getWordEntry(wordId))
-      .filter((entry): entry is WordEntry => entry !== undefined);
-    const fillerWords = todayPack.words.filter((word) => !result.reviewNeededWordIds.includes(word.id));
-    const nextWords = [...reviewWords, ...fillerWords];
+    const priorityWordIds = result.targetResults
+      .filter((target) => !target.completed)
+      .map((target) => target.wordId);
+    const nextWords = getWordsByPack(result.packId);
 
     if (nextWords.length > 0) {
       startSessionWithWords(nextWords, {
         packId: result.packId,
-        dateKey: result.dateKey,
-        priorityWordIds: result.reviewNeededWordIds,
-        forcedReviewWordIds: result.reviewNeededWordIds,
+        dateKey: todayPack?.dateKey ?? result.dateKey,
+        priorityWordIds,
       });
       return;
     }
@@ -238,59 +208,29 @@ export function useVocabularyApp() {
     }
 
     const reviewedAt = new Date().toISOString();
-    const nextWordProgressById = { ...profile.wordProgressById };
-    const targetResults: VocabularyTargetResult[] = activeSession.targets.map((target) => {
-      const collectedCount = Math.min(
-        game.completion?.collectedCountsByWordId[target.entry.id] ?? 0,
+    const targetResults = activeSession.targets.map((target) => {
+      const formedCount = Math.min(
+        game.completion.formedCountsByWordId[target.id] ?? 0,
         TARGET_WORD_COLLECTION_GOAL,
       );
-      const completed = collectedCount >= TARGET_WORD_COLLECTION_GOAL;
-      const nextProgress = updateWordProgress(
-        profile.wordProgressById[target.entry.id],
-        completed,
-        reviewedAt,
-      );
-
-      nextWordProgressById[target.entry.id] = nextProgress;
+      const completed = formedCount >= TARGET_WORD_COLLECTION_GOAL;
 
       return {
-        wordId: target.entry.id,
-        collectedCount,
+        wordId: target.id,
+        collectedCount: formedCount,
         targetCount: TARGET_WORD_COLLECTION_GOAL,
-        hit: collectedCount > 0,
+        hit: formedCount > 0,
         completed,
-        wasNew: target.wasNew,
-        wasReview: target.wasReview,
-        previousStage: target.previousStage,
-        nextStage: nextProgress.stage,
       };
     });
-    const activityDateKey = activeSession.dateKey;
-    const nextActivity = recordVocabularySessionCompletion(
-      recordVocabularyTargetResults(
-        getVocabularyDailyActivity(profile, activityDateKey),
-        targetResults,
-        reviewedAt,
-      ),
-      reviewedAt,
-    );
-    const nextProfile: VocabularyProfile = {
-      ...profile,
-      lastStudiedAt: reviewedAt,
-      wordProgressById: nextWordProgressById,
-      dailyActivityByDate: {
-        ...profile.dailyActivityByDate,
-        [activityDateKey]: nextActivity,
-      },
-    };
     const sessionResult = buildSessionResult({
-      dateKey: activityDateKey,
+      dateKey: activeSession.dateKey,
       packId: activeSession.packId,
       score: game.completion.score,
       removedBlockCount: game.completion.removedBlockCount,
       targetResults,
-      quizEnabled: nextProfile.quizEnabled,
     });
+    const nextProfile = recordVocabularyTargetResults(profile, sessionResult, reviewedAt);
 
     setProfile(nextProfile);
     setResult(sessionResult);
@@ -298,46 +238,6 @@ export function useVocabularyApp() {
     setScreen("result");
     game.clearCompletion();
   }, [activeSession, game, profile]);
-
-  const answerQuestion = useCallback((questionId: string, choice: string) => {
-    const question = result?.questions.find((item) => item.id === questionId);
-    let shouldRecordAnswer = false;
-
-    setQuizAnswersByQuestionId((currentValue) => {
-      if (currentValue[questionId]) {
-        return currentValue;
-      }
-
-      shouldRecordAnswer = true;
-      return {
-        ...currentValue,
-        [questionId]: choice,
-      };
-    });
-
-    if (!shouldRecordAnswer || !result || !question) {
-      return;
-    }
-
-    setProfile((currentProfile) => {
-      if (!currentProfile) {
-        return currentProfile;
-      }
-
-      const activity = getVocabularyDailyActivity(currentProfile, result.dateKey);
-      return {
-        ...currentProfile,
-        dailyActivityByDate: {
-          ...currentProfile.dailyActivityByDate,
-          [result.dateKey]: recordVocabularyQuizAnswer(
-            activity,
-            questionId,
-            choice === question.answer,
-          ),
-        },
-      };
-    });
-  }, [result]);
 
   const updateSettings = useCallback((patch: VocabularySettingsPatch) => {
     setProfile((currentProfile) => {
@@ -355,10 +255,22 @@ export function useVocabularyApp() {
   const goHome = useCallback(() => {
     game.resetGame();
     setActiveSession(null);
+    setPendingSession(null);
     setResult(null);
-    setQuizAnswersByQuestionId({});
     setScreen("home");
   }, [game]);
+
+  const cancelSessionPreview = useCallback(() => {
+    setPendingSession(null);
+  }, []);
+
+  const confirmSessionPreview = useCallback(() => {
+    if (!pendingSession) {
+      return;
+    }
+
+    launchPreparedSession(pendingSession);
+  }, [launchPreparedSession, pendingSession]);
 
   return {
     screen,
@@ -368,16 +280,14 @@ export function useVocabularyApp() {
     dailyTasks,
     homeHref: getGameHomeHref(),
     result,
-    quizQuestions,
-    quizAnswersByQuestionId,
-    quizCompletedCount,
-    quizCorrectCount,
+    sessionPreviewTargets: pendingSession?.targets ?? [],
     sessionTargets,
     sessionCompletedTargetCount,
     game,
     startSession,
     continueReview,
-    answerQuestion,
+    cancelSessionPreview,
+    confirmSessionPreview,
     updateSettings,
     goHome,
   };

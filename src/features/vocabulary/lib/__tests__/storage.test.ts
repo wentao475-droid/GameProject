@@ -37,27 +37,15 @@ describe("vocabulary storage", () => {
     globalThis.window = { localStorage: storage };
 
     const profile: VocabularyProfile = {
-      currentPackId: "cet4-bridge",
+      currentPackId: "hanzi-starter",
       dailyWordTarget: 8,
-      showMeaningHint: false,
-      quizEnabled: true,
-      wordProgressById: {
-        sustain: {
-          stage: "learning",
-          seenCount: 2,
-          correctCount: 1,
-          lastReviewedAt: "2026-07-25T08:00:00.000Z",
-        },
-      },
+      learnedCharacterIds: ["ma", "hao"],
       dailyActivityByDate: {
         "2026-07-25": {
-          studiedWordIds: ["sustain"],
-          reviewedWordIds: ["sustain"],
-          introducedWordIds: [],
-          uncertainWordIds: [],
-          quizAnsweredQuestionIds: ["sustain-quiz"],
-          quizCorrectQuestionIds: ["sustain-quiz"],
+          dateKey: "2026-07-25",
           completedSessionCount: 1,
+          learnedCharacterIds: ["ma"],
+          completedTargetWordIds: ["ma"],
           lastStudiedAt: "2026-07-25T09:30:00.000Z",
         },
       },
@@ -76,27 +64,15 @@ describe("vocabulary storage", () => {
     globalThis.window = { localStorage: storage };
 
     writeVocabularyProfile({
-      currentPackId: "cet4-bridge",
+      currentPackId: "hanzi-starter",
       dailyWordTarget: 10,
-      showMeaningHint: false,
-      quizEnabled: false,
-      wordProgressById: {
-        sustain: {
-          stage: "familiar",
-          seenCount: 4,
-          correctCount: 3,
-          lastReviewedAt: "2026-07-25T08:00:00.000Z",
-        },
-      },
+      learnedCharacterIds: ["ma"],
       dailyActivityByDate: {
         "2026-07-25": {
-          studiedWordIds: ["sustain"],
-          reviewedWordIds: ["sustain"],
-          introducedWordIds: [],
-          uncertainWordIds: [],
-          quizAnsweredQuestionIds: [],
-          quizCorrectQuestionIds: [],
+          dateKey: "2026-07-25",
           completedSessionCount: 2,
+          learnedCharacterIds: ["ma"],
+          completedTargetWordIds: ["ma"],
           lastStudiedAt: "2026-07-25T09:30:00.000Z",
         },
       },
@@ -118,7 +94,7 @@ describe("vocabulary storage", () => {
         currentPackId: "missing-pack",
         dailyWordTarget: -2,
         wordProgressById: {
-          derive: {
+          ma: {
             stage: "broken",
             seenCount: 2.8,
             correctCount: 3.1,
@@ -128,12 +104,8 @@ describe("vocabulary storage", () => {
         },
         dailyActivityByDate: {
           "2026-07-25": {
-            studiedWordIds: ["derive", 123, "derive", ""],
-            reviewedWordIds: ["derive"],
-            introducedWordIds: [null],
-            uncertainWordIds: ["derive"],
-            quizAnsweredQuestionIds: ["derive-quiz", "derive-quiz"],
-            quizCorrectQuestionIds: [false, "derive-quiz"],
+            studiedWordIds: ["ma", 123, "ma", ""],
+            introducedWordIds: ["hao", null],
             completedSessionCount: -3,
             lastStudiedAt: 100,
           },
@@ -143,27 +115,15 @@ describe("vocabulary storage", () => {
     );
 
     expect(readVocabularyProfile()).toMatchObject({
-      currentPackId: "gaokao-advanced",
+      currentPackId: "hanzi-starter",
       dailyWordTarget: 6,
-      showMeaningHint: true,
-      quizEnabled: true,
-      wordProgressById: {
-        derive: {
-          stage: "familiar",
-          seenCount: 2,
-          correctCount: 3,
-          lastReviewedAt: null,
-        },
-      },
+      learnedCharacterIds: ["ma"],
       dailyActivityByDate: {
         "2026-07-25": {
-          studiedWordIds: ["derive"],
-          reviewedWordIds: ["derive"],
-          introducedWordIds: [],
-          uncertainWordIds: ["derive"],
-          quizAnsweredQuestionIds: ["derive-quiz"],
-          quizCorrectQuestionIds: ["derive-quiz"],
+          dateKey: "2026-07-25",
           completedSessionCount: 0,
+          learnedCharacterIds: ["hao"],
+          completedTargetWordIds: ["ma"],
           lastStudiedAt: null,
         },
       },

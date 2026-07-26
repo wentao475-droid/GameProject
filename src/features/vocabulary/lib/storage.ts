@@ -1,10 +1,9 @@
-import { DEFAULT_WORD_PACK_ID, getWordPack } from "@/features/vocabulary/lib/wordBank";
+import { getWordPack } from "@/features/vocabulary/lib/wordBank";
 import {
-  getDefaultWordProgress,
-  resolveVocabularyStage,
+  createDefaultProfile,
+  getDefaultVocabularyDailyActivity,
   type VocabularyDailyActivity,
   type VocabularyProfile,
-  type WordProgress,
 } from "@/features/vocabulary/lib/vocabularyProgress";
 
 export const VOCABULARY_STORAGE_KEY = "star-pop-vocabulary-profile";
@@ -15,56 +14,6 @@ function clampPositiveInteger(value: unknown, fallback: number) {
   }
 
   return Math.floor(value);
-}
-
-function isVocabularyStage(value: unknown): value is WordProgress["stage"] {
-  return value === "new" || value === "learning" || value === "familiar" || value === "mastered";
-}
-
-function normalizeWordProgress(candidate: unknown): WordProgress | null {
-  if (!candidate || typeof candidate !== "object") {
-    return null;
-  }
-
-  const value = candidate as Record<string, unknown>;
-  const seenCount = clampPositiveInteger(value.seenCount, 0);
-  const correctCount = clampPositiveInteger(value.correctCount, 0);
-  const derivedStage = resolveVocabularyStage(correctCount);
-  const stage = isVocabularyStage(value.stage)
-    ? value.stage === "new" && seenCount > 0
-      ? derivedStage === "new"
-        ? "learning"
-        : derivedStage
-      : value.stage
-    : derivedStage === "new" && seenCount > 0
-      ? "learning"
-      : derivedStage;
-
-  return {
-    stage,
-    seenCount,
-    correctCount,
-    lastReviewedAt: typeof value.lastReviewedAt === "string" ? value.lastReviewedAt : null,
-  };
-}
-
-function normalizeWordProgressById(candidate: unknown) {
-  if (!candidate || typeof candidate !== "object") {
-    return {};
-  }
-
-  return Object.entries(candidate as Record<string, unknown>).reduce<Record<string, WordProgress>>(
-    (result, [wordId, value]) => {
-      const normalized = normalizeWordProgress(value);
-
-      if (normalized) {
-        result[wordId] = normalized;
-      }
-
-      return result;
-    },
-    {},
-  );
 }
 
 function normalizeStringArray(candidate: unknown) {
@@ -85,15 +34,17 @@ function normalizeDailyActivity(candidate: unknown): VocabularyDailyActivity | n
   }
 
   const value = candidate as Record<string, unknown>;
+  const dateKey = typeof value.dateKey === "string" ? value.dateKey : null;
 
   return {
-    studiedWordIds: normalizeStringArray(value.studiedWordIds),
-    reviewedWordIds: normalizeStringArray(value.reviewedWordIds),
-    introducedWordIds: normalizeStringArray(value.introducedWordIds),
-    uncertainWordIds: normalizeStringArray(value.uncertainWordIds),
-    quizAnsweredQuestionIds: normalizeStringArray(value.quizAnsweredQuestionIds),
-    quizCorrectQuestionIds: normalizeStringArray(value.quizCorrectQuestionIds),
+    dateKey: dateKey ?? "",
     completedSessionCount: clampPositiveInteger(value.completedSessionCount, 0),
+    learnedCharacterIds: normalizeStringArray(
+      Array.isArray(value.learnedCharacterIds) ? value.learnedCharacterIds : value.introducedWordIds,
+    ),
+    completedTargetWordIds: normalizeStringArray(
+      Array.isArray(value.completedTargetWordIds) ? value.completedTargetWordIds : value.studiedWordIds,
+    ),
     lastStudiedAt: typeof value.lastStudiedAt === "string" ? value.lastStudiedAt : null,
   };
 }
@@ -109,7 +60,11 @@ function normalizeDailyActivityByDate(candidate: unknown) {
     const normalized = normalizeDailyActivity(value);
 
     if (normalized) {
-      result[dateKey] = normalized;
+      result[dateKey] = {
+        ...getDefaultVocabularyDailyActivity(dateKey),
+        ...normalized,
+        dateKey,
+      };
     }
 
     return result;
@@ -117,15 +72,7 @@ function normalizeDailyActivityByDate(candidate: unknown) {
 }
 
 export function getDefaultVocabularyProfile(): VocabularyProfile {
-  return {
-    currentPackId: DEFAULT_WORD_PACK_ID,
-    dailyWordTarget: 6,
-    showMeaningHint: true,
-    quizEnabled: true,
-    wordProgressById: {},
-    dailyActivityByDate: {},
-    lastStudiedAt: null,
-  };
+  return createDefaultProfile();
 }
 
 function isBrowser() {
@@ -147,13 +94,20 @@ function normalizeVocabularyProfile(raw: unknown): VocabularyProfile {
         ? getWordPack(value.currentPackId).id
         : defaults.currentPackId,
     dailyWordTarget: clampPositiveInteger(value.dailyWordTarget, defaults.dailyWordTarget),
-    showMeaningHint:
-      typeof value.showMeaningHint === "boolean"
-        ? value.showMeaningHint
-        : defaults.showMeaningHint,
-    quizEnabled:
-      typeof value.quizEnabled === "boolean" ? value.quizEnabled : defaults.quizEnabled,
-    wordProgressById: normalizeWordProgressById(value.wordProgressById),
+    learnedCharacterIds: normalizeStringArray(
+      Array.isArray(value.learnedCharacterIds)
+        ? value.learnedCharacterIds
+        : Object.entries((value as Record<string, unknown>).wordProgressById ?? {})
+            .filter(([, progress]) => {
+              if (!progress || typeof progress !== "object") {
+                return false;
+              }
+
+              const candidate = progress as Record<string, unknown>;
+              return candidate.stage === "mastered" || clampPositiveInteger(candidate.correctCount, 0) >= 3;
+            })
+            .map(([wordId]) => wordId),
+    ),
     dailyActivityByDate: normalizeDailyActivityByDate(value.dailyActivityByDate),
     lastStudiedAt: typeof value.lastStudiedAt === "string" ? value.lastStudiedAt : null,
   };
@@ -194,5 +148,3 @@ export function resetVocabularyProfile() {
 
   return defaults;
 }
-
-export { getDefaultWordProgress };

@@ -9,22 +9,23 @@ import {
 } from "@/features/vocabulary/lib/wordBank";
 
 describe("wordBank", () => {
-  it("provides at least two packs and enough vocabulary entries", () => {
-    expect(WORD_PACKS.length).toBeGreaterThanOrEqual(2);
-    expect(WORDS.length).toBeGreaterThanOrEqual(24);
+  it("provides a starter hanzi pack with enough characters", () => {
+    expect(WORD_PACKS.length).toBeGreaterThanOrEqual(1);
+    expect(WORDS.length).toBeGreaterThanOrEqual(10);
 
     WORD_PACKS.forEach((pack) => {
       expect(pack.wordIds.length).toBeGreaterThanOrEqual(10);
     });
   });
 
-  it("only includes gaokao-plus or cet4 bridge words with complete fields", () => {
+  it("keeps every character entry complete for radical learning", () => {
     WORDS.forEach((entry) => {
-      expect(entry.difficultyBand === "gaokao-plus" || entry.difficultyBand === "cet4").toBe(true);
       expect(entry.word.trim().length).toBeGreaterThan(0);
       expect(entry.meaning.trim().length).toBeGreaterThan(0);
-      expect(entry.partOfSpeech.trim().length).toBeGreaterThan(0);
+      expect(entry.pronunciation.trim().length).toBeGreaterThan(0);
       expect(entry.example.trim().length).toBeGreaterThan(0);
+      expect(entry.parts.length).toBeGreaterThanOrEqual(2);
+      expect(entry.familyHint.trim().length).toBeGreaterThan(0);
     });
   });
 
@@ -46,11 +47,11 @@ describe("wordBank", () => {
   it("returns ordered pack data and falls back to the default pack", () => {
     const defaultPack = getWordPack(DEFAULT_WORD_PACK_ID);
     const fallbackPack = getWordPack("missing-pack");
-    const entries = getWordsByPack("cet4-bridge");
+    const entries = getWordsByPack(DEFAULT_WORD_PACK_ID);
 
     expect(fallbackPack.id).toBe(defaultPack.id);
-    expect(entries.length).toBe(getWordPack("cet4-bridge").wordIds.length);
-    expect(entries[0]?.id).toBe(getWordPack("cet4-bridge").wordIds[0]);
-    expect(entries.every((entry) => entry.packId === "cet4-bridge")).toBe(true);
+    expect(entries.length).toBe(getWordPack(DEFAULT_WORD_PACK_ID).wordIds.length);
+    expect(entries[0]?.id).toBe(getWordPack(DEFAULT_WORD_PACK_ID).wordIds[0]);
+    expect(entries.every((entry) => entry.packId === DEFAULT_WORD_PACK_ID)).toBe(true);
   });
 });
